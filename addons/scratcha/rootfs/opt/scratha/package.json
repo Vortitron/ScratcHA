@@ -1,5 +1,5 @@
 {
-	"name": "scratha-bridge",
+	"name": "scratcha-bridge",
 	"version": "0.0.1",
 	"description": "TurboWarp/Scratch bridge for Home Assistant with a local proxy and static hosting.",
 	"type": "module",

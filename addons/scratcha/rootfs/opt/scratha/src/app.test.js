@@ -107,7 +107,7 @@ test("protected service requires PIN header", async () => {
 
 	const allowed = await fetch(`${base}/bridge/services/lock/unlock`, {
 		method: "POST",
-		headers: { "x-scratha-pin": "1234" }
+		headers: { "x-scratcha-pin": "1234" }
 	});
 	assert.equal(allowed.status, 200);
 });
@@ -136,6 +136,31 @@ test("timeout aborts HA request", async () => {
 	assert.equal(res.status, 504);
 	const body = await res.json();
 	assert.match(body.error, /timed out/);
+});
+
+test("CORS allows x-scratcha-pin header when enabled", async () => {
+	const fetchImpl = async (url) => jsonResponse({ ok: url });
+
+	const { base } = await startApp({
+		homeassistant_url: "http://ha.local:8123",
+		access_token: "abc",
+		allowed_entities: [],
+		allowed_services: [],
+		cors_allow_origin: "http://example.com"
+	}, { fetch: fetchImpl });
+
+	const res = await fetch(`${base}/bridge/health`, {
+		method: "OPTIONS",
+		headers: {
+			Origin: "http://example.com",
+			"Access-Control-Request-Method": "POST",
+			"Access-Control-Request-Headers": "x-scratcha-pin"
+		}
+	});
+
+	assert.equal(res.status, 204);
+	const allowHeaders = res.headers.get("access-control-allow-headers") ?? "";
+	assert.match(allowHeaders.toLowerCase(), /x-scratcha-pin/);
 });
 
 function jsonResponse(body, status = 200) {

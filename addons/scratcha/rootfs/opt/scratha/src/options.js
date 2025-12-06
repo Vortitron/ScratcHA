@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 
 const defaultOptionsPath = process.env.OPTIONS_PATH ?? "/data/options.json";
 const defaultHaUrl = "http://homeassistant:8123";
-const defaultStaticDir = "/share/scratha/www";
+const defaultStaticDir = "/share/scratcha/www";
 const defaultHost = "0.0.0.0";
 const defaultPort = 8099;
 const defaultTimeoutMs = 8000;

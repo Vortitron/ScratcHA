@@ -9,7 +9,7 @@ const listenPort = Number(options.port);
 
 app.listen(listenPort, listenHost, () => {
 	console.log(
-		`[scratha] listening on http://${listenHost}:${listenPort} (HA: ${options.homeassistant_url}, cache: ${options.cache_seconds}s)`
+		`[scratcha] listening on http://${listenHost}:${listenPort} (HA: ${options.homeassistant_url}, cache: ${options.cache_seconds}s)`
 	);
 });
 

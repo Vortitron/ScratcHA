@@ -1,7 +1,7 @@
 {
-	"name": "ScratHA Bridge",
+	"name": "ScratcHA Bridge",
 	"version": "0.0.1",
-	"slug": "scratha",
+	"slug": "scratcha",
 	"description": "Serve a TurboWarp bundle and proxy Home Assistant API calls for Scratch projects without CORS headaches.",
 	"arch": [
 		"aarch64",
@@ -17,7 +17,7 @@
 		"8099/tcp": 8099
 	},
 	"ports_description": {
-		"8099/tcp": "ScratHA bridge HTTP"
+		"8099/tcp": "ScratcHA bridge HTTP"
 	},
 	"webui": "http://[HOST]:[PORT:8099]/",
 	"map": [
@@ -53,7 +53,7 @@
 		"host": "0.0.0.0",
 		"port": 8099,
 		"cors_allow_origin": "",
-		"static_dir": "/share/scratha/www",
+		"static_dir": "/share/scratcha/www",
 		"timeout_ms": 8000,
 		"protected_services": [],
 		"pin_code": ""

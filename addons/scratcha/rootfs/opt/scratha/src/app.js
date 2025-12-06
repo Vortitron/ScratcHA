@@ -22,7 +22,7 @@ export function createApp(config, deps = {}) {
 	const pinCode = (config.pin_code ?? "").trim();
 
 	assert(baseUrl, "homeassistant_url is required");
-	assert(token, "access_token is required. Create a scoped HA token for ScratHA.");
+	assert(token, "access_token is required. Create a scoped HA token for ScratcHA.");
 
 	const cache = new Map();
 
@@ -35,7 +35,7 @@ export function createApp(config, deps = {}) {
 		app.use((req, res, next) => {
 			res.setHeader("Access-Control-Allow-Origin", corsAllowOrigin === "*" ? "*" : corsAllowOrigin);
 			res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-			res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
+			res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,x-scratcha-pin");
 			if (req.method === "OPTIONS") {
 				return res.sendStatus(204);
 			}
@@ -115,7 +115,7 @@ export function createApp(config, deps = {}) {
 	});
 
 	app.use((err, req, res, next) => {
-		logger.error("[scratha] error", err);
+		logger.error("[scratcha] error", err);
 		const status = err.status || 500;
 		res.status(status).json({
 			error: err.message ?? "Unexpected error",
@@ -162,7 +162,7 @@ function enforcePin(serviceName, protectedServices, pinCode, req) {
 	if (!protectedServices.has(serviceName)) {
 		return;
 	}
-	const headerPin = (req.headers["x-scratha-pin"] ?? "").toString();
+	const headerPin = (req.headers["x-scratcha-pin"] ?? "").toString();
 	if (headerPin !== pinCode) {
 		const error = new Error(`Service ${serviceName} requires a valid PIN`);
 		error.status = 403;
