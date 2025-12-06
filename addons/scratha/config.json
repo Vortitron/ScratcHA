@@ -38,7 +38,11 @@
 		"port": "int?",
 		"cors_allow_origin": "str?",
 		"static_dir": "str?",
-		"timeout_ms": "int?"
+		"timeout_ms": "int?",
+		"protected_services": [
+			"str"
+		],
+		"pin_code": "str?"
 	},
 	"options": {
 		"homeassistant_url": "http://homeassistant:8123",
@@ -50,7 +54,9 @@
 		"port": 8099,
 		"cors_allow_origin": "",
 		"static_dir": "/share/scratha/www",
-		"timeout_ms": 8000
+		"timeout_ms": 8000,
+		"protected_services": [],
+		"pin_code": ""
 	}
 }
 

@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="UTF-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1.0">
+	<title>TurboWarp Demo – ScratHA</title>
+	<style>
+		body { font-family: Arial, sans-serif; margin: 1.5rem; background: #f5f5f5; }
+		.card { background: #fff; padding: 1rem; border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); margin-bottom: 1rem; }
+		button { padding: 0.5rem 1rem; margin-right: 0.5rem; cursor: pointer; }
+		input { padding: 0.45rem; width: 100%; max-width: 420px; }
+		label { display: block; margin: 0.25rem 0; }
+		pre { background: #111; color: #eee; padding: 0.75rem; border-radius: 6px; overflow-x: auto; }
+	</style>
+</head>
+<body>
+	<h1>TurboWarp Demo – ScratHA</h1>
+	<p>Use this as a drop-in bundle for the add-on. Copy this folder to <code>/share/scratha/www</code> (or your <code>static_dir</code>). It simulates what your TurboWarp project would do: fetch a sensor, speak it, and trigger a service.</p>
+
+	<div class="card">
+		<h2>Speak a sensor</h2>
+		<label for="sensor-id">Sensor entity ID</label>
+		<input id="sensor-id" placeholder="sensor.living_room_temperature">
+		<button id="speak-sensor">Fetch + Speak</button>
+		<pre id="sensor-output">Awaiting action...</pre>
+	</div>
+
+	<div class="card">
+		<h2>Toggle a light (with optional PIN)</h2>
+		<label for="light-entity">Light entity ID</label>
+		<input id="light-entity" placeholder="light.kitchen">
+		<label for="pin-code">PIN (if required for protected services)</label>
+		<input id="pin-code" placeholder="1234">
+		<button id="toggle-on">Turn on</button>
+		<button id="toggle-off">Turn off</button>
+		<pre id="service-output">Awaiting action...</pre>
+	</div>
+
+	<div class="card">
+		<h2>Bridge health</h2>
+		<button id="check-health">Check /bridge/health</button>
+		<pre id="health-output">Awaiting action...</pre>
+	</div>
+
+	<script>
+		const sensorOutput = document.getElementById("sensor-output");
+		const serviceOutput = document.getElementById("service-output");
+		const healthOutput = document.getElementById("health-output");
+
+		document.getElementById("speak-sensor").addEventListener("click", async () => {
+			const entityId = document.getElementById("sensor-id").value.trim();
+			if (!entityId) {
+				sensorOutput.textContent = "Enter a sensor entity ID.";
+				return;
+			}
+			sensorOutput.textContent = "Loading...";
+			const data = await safeFetchJson(`/bridge/states/${encodeURIComponent(entityId)}`);
+			sensorOutput.textContent = JSON.stringify(data, null, 2);
+			if (data && data.state) {
+				speak(`The value of ${entityId} is ${data.state}`);
+			}
+		});
+
+		document.getElementById("toggle-on").addEventListener("click", () => callLight("turn_on"));
+		document.getElementById("toggle-off").addEventListener("click", () => callLight("turn_off"));
+
+		document.getElementById("check-health").addEventListener("click", async () => {
+			healthOutput.textContent = "Loading...";
+			const data = await safeFetchJson("/bridge/health");
+			healthOutput.textContent = JSON.stringify(data, null, 2);
+		});
+
+		async function callLight(action) {
+			const entityId = document.getElementById("light-entity").value.trim();
+			const pin = document.getElementById("pin-code").value.trim();
+			if (!entityId) {
+				serviceOutput.textContent = "Enter a light entity ID.";
+				return;
+			}
+			serviceOutput.textContent = "Calling...";
+			const headers = { "Content-Type": "application/json" };
+			if (pin) {
+				headers["x-scratha-pin"] = pin;
+			}
+			const res = await safeFetchJson(`/bridge/services/light/${action}`, {
+				method: "POST",
+				headers,
+				body: JSON.stringify({ entity_id: entityId })
+			});
+			serviceOutput.textContent = JSON.stringify(res, null, 2);
+		}
+
+		async function safeFetchJson(url, init) {
+			try {
+				const res = await fetch(url, init);
+				const text = await res.text();
+				try {
+					return JSON.parse(text);
+				} catch {
+					return { status: res.status, body: text };
+				}
+			} catch (error) {
+				return { error: error.message };
+			}
+		}
+
+		function speak(text) {
+			if (!("speechSynthesis" in window)) {
+				return;
+			}
+			const utterance = new SpeechSynthesisUtterance(text);
+			window.speechSynthesis.speak(utterance);
+		}
+	</script>
+</body>
+</html>
+

@@ -18,6 +18,8 @@ export function createApp(config, deps = {}) {
 	const corsAllowOrigin = (config.cors_allow_origin ?? "").trim();
 	const staticDir = config.static_dir;
 	const timeoutMs = Number(config.timeout_ms);
+	const protectedServices = new Set(config.protected_services ?? []);
+	const pinCode = (config.pin_code ?? "").trim();
 
 	assert(baseUrl, "homeassistant_url is required");
 	assert(token, "access_token is required. Create a scoped HA token for ScratHA.");
@@ -99,6 +101,7 @@ export function createApp(config, deps = {}) {
 			const service = req.params.service;
 			const serviceName = `${domain}.${service}`;
 			assertServiceAllowed(serviceName, allowAllServices, allowedServices);
+			enforcePin(serviceName, protectedServices, pinCode, req);
 			const body = req.body ?? {};
 			const response = await haRequest(baseUrl, token, timeoutMs, fetchImpl, `/api/services/${domain}/${service}`, {
 				method: "POST",
@@ -147,6 +150,21 @@ function assertServiceAllowed(serviceName, allowAllServices, allowedServices) {
 	}
 	if (!allowedServices.has(serviceName)) {
 		const error = new Error(`Service ${serviceName} is not allowed`);
+		error.status = 403;
+		throw error;
+	}
+}
+
+function enforcePin(serviceName, protectedServices, pinCode, req) {
+	if (!pinCode || protectedServices.size === 0) {
+		return;
+	}
+	if (!protectedServices.has(serviceName)) {
+		return;
+	}
+	const headerPin = (req.headers["x-scratha-pin"] ?? "").toString();
+	if (headerPin !== pinCode) {
+		const error = new Error(`Service ${serviceName} requires a valid PIN`);
 		error.status = 403;
 		throw error;
 	}

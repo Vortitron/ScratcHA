@@ -7,6 +7,7 @@ const defaultStaticDir = "/share/scratha/www";
 const defaultHost = "0.0.0.0";
 const defaultPort = 8099;
 const defaultTimeoutMs = 8000;
+const defaultProtectedServices = [];
 
 export function loadOptions(path = defaultOptionsPath) {
 	if (!fs.existsSync(path)) {
@@ -29,6 +30,8 @@ export function normalizeOptions(raw) {
 	const port = Number(raw.port ?? defaultPort);
 	const static_dir = raw.static_dir ?? defaultStaticDir;
 	const timeout_ms = Number(raw.timeout_ms ?? defaultTimeoutMs);
+	const protected_services = Array.isArray(raw.protected_services) ? raw.protected_services : defaultProtectedServices;
+	const pin_code = raw.pin_code ? String(raw.pin_code) : "";
 
 	return {
 		homeassistant_url,
@@ -40,7 +43,9 @@ export function normalizeOptions(raw) {
 		host,
 		port,
 		static_dir,
-		timeout_ms
+		timeout_ms,
+		protected_services,
+		pin_code
 	};
 }
 

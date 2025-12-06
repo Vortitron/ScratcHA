@@ -35,12 +35,14 @@ Repository layout
 Add-on usage (dev path)
 - Build: `docker build -t scratha:addon addons/scratha`.
 - Run locally (example): `docker run --net=host -v $PWD/dev-options.json:/data/options.json scratha:addon`.
-- Required option: `access_token` (HA long-lived, ideally scoped user). Optional: `homeassistant_url`, `allowed_entities`, `allowed_services`, `cache_seconds`, `cors_allow_origin`, `host`, `port`, `static_dir`, `timeout_ms`.
+- Required option: `access_token` (HA long-lived, ideally scoped user). Optional: `homeassistant_url`, `allowed_entities`, `allowed_services`, `cache_seconds`, `cors_allow_origin`, `host`, `port`, `static_dir`, `timeout_ms`, `protected_services`, `pin_code`.
 - Static assets: place packaged TurboWarp bundle under `/share/scratha/www` (or set `static_dir`). The bridge serves that folder if present.
 - Proxy endpoints exposed on `:8099` by default: `/bridge/health`, `/bridge/config`, `/bridge/states`, `/bridge/states/:entityId`, `/bridge/services/:domain/:service`.
 
 Demo bundle
-- A simple HTML demo is in `examples/demo-www`. Copy its contents to `/share/scratha/www` (or your configured `static_dir`) to manually call bridge endpoints from the browser.
+- Simple demos live under `examples/`:
+  - `demo-www` — basic bridge tester for config/states/services.
+  - `turbowarp-demo` — sensor read + speech and light toggle (with optional PIN header) to mirror what a TurboWarp project would do. Copy either folder to `/share/scratha/www` (or your configured `static_dir`).
 
 Security and safety
 - Keep tokens browser-side but limit scope; recommend a dedicated HA user with minimal permissions.
@@ -49,6 +51,6 @@ Security and safety
 
 Next steps
 - Build TurboWarp demo project that fetches a sensor state and speaks it, then package to `/share/scratha/www`.
-- Add tests (Node) with mocked HA responses for the proxy and allowlists. (`npm test` in `addons/scratha/rootfs/opt/scratha`.)
+- Add tests (Node) with mocked HA responses for the proxy and allowlists. (`npm test` in `addons/scratha/rootfs/opt/scratha`.) -> now includes PIN/timeout coverage.
 - Publish add-on repository metadata so HA can install it directly.
 - Document deployment for add-on and static-hosted variants.
