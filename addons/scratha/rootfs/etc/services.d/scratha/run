@@ -1,0 +1,4 @@
+#!/usr/bin/with-contenv bash
+cd /opt/scratha
+exec node src/server.js
+
