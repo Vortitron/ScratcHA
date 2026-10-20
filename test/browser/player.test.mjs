@@ -169,6 +169,29 @@ describe("demo project", { skip }, () => {
 	});
 });
 
+describe("kids page without the editor", { skip }, () => {
+	test("offers a download of the Home blocks that holds the allowed list", { timeout: 60000 }, async () => {
+		const bridge = new BridgeProcess({ options: { ...safeOptions, access_token: ha.token, homeassistant_url: ha.url } });
+		await bridge.start();
+		const context = await browser.newContext({ acceptDownloads: true });
+		const page = await context.newPage();
+		try {
+			await page.goto(`${bridge.url}/`);
+			await page.locator("#no-editor").waitFor({ state: "visible", timeout: 10000 });
+			const [download] = await Promise.all([page.waitForEvent("download"), page.locator("#download-blocks").click()]);
+			assert.equal(download.suggestedFilename(), "scratcha.js");
+			const code = fs.readFileSync(await download.path(), "utf8");
+			const first = code.split("\n")[0];
+			assert.match(first, /knownSetting = \[/);
+			assert.match(first, /"entity_id":"light.kids_lamp"/);
+			assert.doesNotMatch(code, /house_main_power/);
+		} finally {
+			await context.close();
+			await bridge.stop();
+		}
+	});
+});
+
 describe("status page", { skip }, () => {
 	test("warns when the allowlist is empty", async () => {
 		const bridge = new BridgeProcess({ options: { access_token: ha.token, homeassistant_url: ha.url } });
