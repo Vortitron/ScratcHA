@@ -279,7 +279,7 @@ map:
   - type: ssl
 ```
 
-`host_network` is dropped: the bridge only talks to the Supervisor and serves one port, and host networking lowers the security rating. `init: false` because the base image runs s6-overlay. The run script uses `#!/usr/bin/with-contenv bashio`. In HTTPS mode `ingress_port` becomes 8098 (1.7), so the ingress port is fixed at 8098 from the start and the LAN port is 8099, both served by the same process.
+`host_network` is dropped: the bridge only talks to the Supervisor and serves one LAN port, and host networking lowers the security rating. `init: false` because the base image runs s6-overlay. The run script uses `#!/usr/bin/with-contenv bashio`. One process listens on 8098 (ingress, always HTTP, needed so HTTPS mode in 1.7 works) and 8099 (LAN, HTTP or HTTPS).
 
 Options schema:
 
