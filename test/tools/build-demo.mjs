@@ -1,11 +1,15 @@
 // Builds examples/ScratcHA demo.sb3. Run from test/: node tools/build-demo.mjs
-// The demo uses light.kids_room and sensor.room_temperature. Change them in
-// the editor to things on your own allowed list.
+// The demo uses light.kids_room and sensor.room_temperature.
+//
+// The extension is stored in the project as a data: URL. An http:// URL
+// cannot load on turbowarp.org (mixed content), and then the project would
+// not open there at all. The add-on player swaps in its own live copy.
 import crypto from "node:crypto";
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import JSZip from "@turbowarp/jszip";
+import { loadExtensionSource, renderExtension } from "../../addons/scratcha/rootfs/opt/scratcha/src/extension.js";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..", "..");
 const lamp = "light.kids_room";
@@ -96,6 +100,12 @@ chain(clicked, toggle, ifError);
 const hat = block("scratcha_whenChanges", { top: true, x: 420, y: 20, fields: { ENTITY_FIELD: [lamp, null] } });
 chain(hat, say(join("The lamp is now ", entityReporter("scratcha_stateOf", lamp)), 2));
 
+function extensionDataUrl() {
+	const known = [{ entity_id: lamp, name: "Kids room light" }, { entity_id: sensor, name: "Room temperature" }];
+	const code = renderExtension(loadExtensionSource(), "", known);
+	return `data:text/javascript;base64,${Buffer.from(code, "utf8").toString("base64")}`;
+}
+
 const costume = (name, a, cx, cy) => ({ name, dataFormat: "svg", assetId: a.md5, md5ext: a.file, rotationCenterX: cx, rotationCenterY: cy });
 const project = {
 	targets: [
@@ -104,7 +114,7 @@ const project = {
 	],
 	monitors: [],
 	extensions: ["scratcha"],
-	extensionURLs: { scratcha: "http://homeassistant.local:8099/extension/scratcha.js" },
+	extensionURLs: { scratcha: extensionDataUrl() },
 	meta: { semver: "3.0.0", vm: "0.2.0", agent: "ScratcHA demo builder" }
 };
 

@@ -9,6 +9,7 @@
 // which also exercises the polling fallback.
 import assert from "node:assert/strict";
 import { test, before, after, describe } from "node:test";
+import { fileURLToPath } from "node:url";
 import { chromium } from "playwright-core";
 import { TestHa, findHass } from "../e2e/start-ha.mjs";
 import { BridgeProcess } from "../e2e/bridge-process.mjs";
@@ -146,6 +147,34 @@ describe("real turbowarp.org editor", { skip }, () => {
 			assert.ok(seenOrigins.has("null"), `origins seen: ${[...seenOrigins].join(", ")}`);
 		} finally {
 			await context.close();
+		}
+	});
+});
+
+// The demo stores the extension as a data: URL with a fixed list, so it
+// opens on turbowarp.org even though the blocks cannot reach home there.
+describe("the demo on turbowarp.org", { skip: process.env.SCRATCHA_SKIP_ONLINE ? "SCRATCHA_SKIP_ONLINE is set" : !(await online()) ? "turbowarp.org is not reachable" : false }, () => {
+	test("opens from a file, with the Home blocks and their menus", { timeout: 120000 }, async () => {
+		const browser = await chromium.launch({ headless: true });
+		try {
+			const context = await browser.newContext({ viewport: { width: 1280, height: 800 } });
+			// Use the plain file input rather than the File System Access picker.
+			await context.addInitScript(() => {
+				window.showOpenFilePicker = undefined;
+			});
+			const page = await context.newPage();
+			await page.goto("https://turbowarp.org/editor", { timeout: 60000 });
+			await page.getByText("File", { exact: true }).first().click();
+			const [chooser] = await Promise.all([page.waitForEvent("filechooser"), page.getByText("Load from your computer").click()]);
+			await chooser.setFiles(fileURLToPath(new URL("../../examples/ScratcHA demo.sb3", import.meta.url)));
+			const allow = page.getByRole("button", { name: /Allow/ });
+			await allow.first().click({ timeout: 30000 });
+			await page.locator(".scratchCategoryMenuItem", { hasText: "Home" }).waitFor({ timeout: 60000 });
+			assert.equal(await page.getByText(/Could not load project/).count(), 0);
+			await page.locator(".scratchCategoryMenuItem", { hasText: "Home" }).click();
+			await page.locator(".blocklyFlyout g.blocklyDraggable").filter({ hasText: /Kids.room.light/ }).first().waitFor({ timeout: 20000 });
+		} finally {
+			await browser.close();
 		}
 	});
 });
