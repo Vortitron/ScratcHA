@@ -14,8 +14,13 @@ env:
 
 jobs:
   test:
-    name: Unit tests
+    name: Unit tests (Node ${{ matrix.node }})
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # 24 is what the add-on image runs (Alpine 3.24). 22 is the oldest supported.
+        node: [22, 24]
     defaults:
       run:
         working-directory: addons/scratcha/rootfs/opt/scratcha
@@ -23,7 +28,7 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: ${{ matrix.node }}
           cache: npm
           cache-dependency-path: addons/scratcha/rootfs/opt/scratcha/package-lock.json
       - run: npm ci
@@ -54,16 +59,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: .github/workflows/ci.yml
+          cache-dependency-path: |
+            .github/workflows/ci.yml
+            test/tools/install-ha.sh
+      # Also installs the frontend HA pins, which homeassistant does not pull in.
       - name: Install Home Assistant
         run: |
-          python -m venv "$RUNNER_TEMP/ha-venv"
-          "$RUNNER_TEMP/ha-venv/bin/pip" install "homeassistant==${HA_VERSION}"
+          sh test/tools/install-ha.sh "$RUNNER_TEMP/ha-venv" "$HA_VERSION"
           echo "SCRATCHA_HASS=$RUNNER_TEMP/ha-venv/bin/hass" >> "$GITHUB_ENV"
       - run: npm ci
         working-directory: addons/scratcha/rootfs/opt/scratcha
@@ -80,16 +87,18 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 22
+          node-version: 24
       - uses: actions/setup-python@v5
         with:
           python-version: "3.13"
           cache: pip
-          cache-dependency-path: .github/workflows/ci.yml
+          cache-dependency-path: |
+            .github/workflows/ci.yml
+            test/tools/install-ha.sh
+      # Also installs the frontend HA pins, which homeassistant does not pull in.
       - name: Install Home Assistant
         run: |
-          python -m venv "$RUNNER_TEMP/ha-venv"
-          "$RUNNER_TEMP/ha-venv/bin/pip" install "homeassistant==${HA_VERSION}"
+          sh test/tools/install-ha.sh "$RUNNER_TEMP/ha-venv" "$HA_VERSION"
           echo "SCRATCHA_HASS=$RUNNER_TEMP/ha-venv/bin/hass" >> "$GITHUB_ENV"
       - run: npm ci
         working-directory: addons/scratcha/rootfs/opt/scratcha

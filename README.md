@@ -74,10 +74,10 @@ Then open `http://localhost:8099/`. Other environment variables: `SCRATCHA_LAN_P
 
 ### End-to-end and browser tests
 
-These start a throwaway Home Assistant from a Python venv on a free `127.0.0.1` port. They never contact any other Home Assistant.
+These start a throwaway Home Assistant from a Python venv on a free `127.0.0.1` port. They never contact any other Home Assistant. `test/tools/install-ha.sh` also installs the frontend that Home Assistant pins. The tests run hass with `--skip-pip`, so without it Home Assistant starts in recovery mode.
 
 ```sh
-python3.13 -m venv ~/ha-venv && ~/ha-venv/bin/pip install homeassistant==2026.2.3
+PATH="$(dirname "$(command -v python3.13)"):$PATH" sh test/tools/install-ha.sh ~/ha-venv 2026.2.3
 cd test
 npm ci
 npx playwright-core install chromium
