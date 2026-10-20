@@ -22,6 +22,11 @@ All notable changes to this add-on are listed here. The format follows [Keep a C
 - `config.json` is now `config.yaml`. Only `aarch64` and `amd64` are supported.
 - No host networking.
 - An empty allowed list now means nothing is allowed. Before, it meant everything.
+- `cors_allow_origins` is empty by default. `null` lets any web page call the bridge, so it is now opt-in, with a warning.
+- Behind ingress, the PIN lockout and rate limits use the address Core saw, not the first `X-Forwarded-For` entry. Too many wrong PINs from all devices lock the PIN for everyone for 5 minutes.
+- Live streams are limited per device. Attributes that name entities off the allowed list are hidden, and so are person and tracker locations.
+- Calls that name entities only inside `target` are refused. The Core REST API ignores `target`.
+- The kids' page offers the Home blocks as a download for turbowarp.org, with the allowed list built in. The demo project opens on turbowarp.org.
 
 ### Removed
 
