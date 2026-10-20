@@ -357,6 +357,13 @@
 		return list.length ? list[0].entity_id : "";
 	}
 
+	// Dynamic menus (a method name) only work unsandboxed. The VM cannot call
+	// into a sandboxed worker to build a menu, so sandboxed menus are fixed
+	// lists made when the extension registers.
+	function menuItems(method) {
+		return unsandboxed ? method : extension[method]();
+	}
+
 	class ScratcHA {
 		getInfo() {
 			const anyEntity = firstOf(state.entities);
@@ -397,11 +404,11 @@
 					{ opcode: "setBridge", blockType: Scratch.BlockType.COMMAND, text: "set home address to [URL]", arguments: { URL: { type: Scratch.ArgumentType.STRING, defaultValue: state.bridge } } }
 				],
 				menus: {
-					entities: { acceptReporters: true, items: "entitiesMenu" },
-					entityFields: { acceptReporters: false, items: "entitiesMenu" },
-					switchables: { acceptReporters: true, items: "switchablesMenu" },
-					lights: { acceptReporters: true, items: "lightsMenu" },
-					runnables: { acceptReporters: true, items: "runnablesMenu" },
+					entities: { acceptReporters: true, items: menuItems("entitiesMenu") },
+					entityFields: { acceptReporters: false, items: menuItems("entitiesMenu") },
+					switchables: { acceptReporters: true, items: menuItems("switchablesMenu") },
+					lights: { acceptReporters: true, items: menuItems("lightsMenu") },
+					runnables: { acceptReporters: true, items: menuItems("runnablesMenu") },
 					onoff: { acceptReporters: true, items: ["on", "off"] }
 				}
 			};

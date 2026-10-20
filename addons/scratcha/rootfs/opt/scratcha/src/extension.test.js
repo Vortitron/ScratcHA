@@ -186,6 +186,7 @@ test("block definitions, colours, menus", async () => {
 		assert.ok(opcodes.includes(op), op);
 	}
 	assert.equal(info.menus.entityFields.acceptReporters, false);
+	assert.equal(info.menus.entities.items, "entitiesMenu");
 	assert.equal(info.menus.entities.acceptReporters, true);
 	const hat = info.blocks.find((b) => b.opcode === "whenChanges");
 	assert.equal(hat.isEdgeActivated, false);
@@ -336,8 +337,12 @@ test("unsandboxed hats: startHats on a real state change only", async () => {
 
 test("sandboxed hats: edge-activated with a 150 ms window", async () => {
 	const ext = await loadExtension({ unsandboxed: false });
-	const hat = ext.instance.getInfo().blocks.find((b) => b.opcode === "whenChanges");
+	const info = ext.instance.getInfo();
+	const hat = info.blocks.find((b) => b.opcode === "whenChanges");
 	assert.equal(hat.isEdgeActivated, true);
+	// Sandboxed menus must be plain lists: the VM cannot call into a worker for them.
+	assert.ok(Array.isArray(info.menus.entities.items));
+	assert.ok(plain(info.menus.lights.items).some((m) => m.value === "light.kids_lamp"));
 	await waitFor(() => ext.internals.state.eventsOpen && ext.internals.state.mirror.has("input_boolean.lamp"));
 	assert.equal(ext.instance.whenChanges({ ENTITY_FIELD: "input_boolean.lamp" }), false);
 	const next = fake.store.get("input_boolean.lamp").state === "on" ? "off" : "on";
