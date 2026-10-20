@@ -120,3 +120,70 @@ test("REST: unreachable Core is ha_unavailable", async () => {
 	const core = new CoreClient({ target: { mode: "token", token: "t", restBase: "http://127.0.0.1:9/api", wsUrl: "ws://127.0.0.1:9" }, timeoutMs: 1000, isAllowed: () => true, logger: quiet });
 	await assert.rejects(core.rest("GET", "/states"), (e) => e.code === "ha_unavailable");
 });
+
+test("reconnects when Core was down at start (refused, not just closed)", async () => {
+	const fake = await startFakeCore({ states: [makeState("light.a", "off")] });
+	const port = new URL(fake.url).port;
+	await fake.close();
+	const core = new CoreClient({
+		target: { mode: "token", token: testToken, restBase: `http://127.0.0.1:${port}/api`, wsUrl: `ws://127.0.0.1:${port}/api/websocket` },
+		timeoutMs: 500,
+		isAllowed: () => true,
+		logger: quiet,
+		backoffMs: [30, 60]
+	});
+	try {
+		core.start();
+		await waitFor(() => core.status === "reconnecting");
+		await waitFor(() => core.attempt >= 3, 2000);
+	} finally {
+		core.stop();
+	}
+});
+
+test("a half-open socket is dropped by the connect watchdog", async () => {
+	const http = await import("node:http");
+	const server = http.createServer();
+	server.on("upgrade", () => {
+		// Never answer the upgrade.
+	});
+	await new Promise((r) => server.listen(0, "127.0.0.1", r));
+	const port = server.address().port;
+	const warnings = [];
+	const core = new CoreClient({
+		target: { mode: "token", token: testToken, restBase: `http://127.0.0.1:${port}/api`, wsUrl: `ws://127.0.0.1:${port}/api/websocket` },
+		timeoutMs: 500,
+		isAllowed: () => true,
+		logger: { ...quiet, warn: (m) => warnings.push(m) },
+		backoffMs: [30],
+		connectTimeoutMs: 100
+	});
+	try {
+		core.start();
+		await waitFor(() => warnings.some((w) => /did not finish connecting/.test(w)), 2000);
+		assert.equal(core.status, "reconnecting");
+	} finally {
+		core.stop();
+		server.closeAllConnections();
+		server.close();
+	}
+});
+
+test("heartbeat drops a Core that stops answering pings", async () => {
+	const fake = await startFakeCore({ states: [makeState("light.a", "off")] });
+	const warnings = [];
+	const core = clientFor(fake, { heartbeatMs: 50, logger: { ...quiet, warn: (m) => warnings.push(m) } });
+	try {
+		core.start();
+		await waitFor(() => core.connected);
+		await new Promise((r) => setTimeout(r, 200));
+		assert.equal(warnings.length, 0, "pings are answered");
+		fake.ignorePings = true;
+		await waitFor(() => warnings.some((w) => /stopped answering pings/.test(w)), 2000);
+		fake.ignorePings = false;
+		await waitFor(() => core.connected, 2000);
+	} finally {
+		core.stop();
+		await fake.close();
+	}
+});

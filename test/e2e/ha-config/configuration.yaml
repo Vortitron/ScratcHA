@@ -1,0 +1,78 @@
+# Throwaway Home Assistant for the ScratcHA end-to-end tests.
+# Only safe, fake entities. Nothing here touches real hardware.
+homeassistant:
+  name: ScratcHA test house
+  unit_system: metric
+  time_zone: Europe/London
+  country: GB
+  latitude: 51.5
+  longitude: 0
+  elevation: 0
+
+http:
+  server_host: 127.0.0.1
+  server_port: !env_var SCRATCHA_TEST_HA_PORT 8123
+
+api:
+onboarding:
+auth:
+
+logger:
+  default: warning
+
+input_boolean:
+  lamp:
+    name: Lamp
+  house_main_power:
+    name: House main power
+    initial: true
+  kids_lamp_power:
+    name: Kids lamp power
+
+input_number:
+  temp:
+    name: Temp
+    min: 0
+    max: 40
+    step: 0.5
+    initial: 21.5
+  kids_lamp_level:
+    name: Kids lamp level
+    min: 0
+    max: 255
+    step: 1
+    initial: 0
+
+template:
+  - sensor:
+      - name: Room temperature
+        unique_id: scratcha_room_temperature
+        unit_of_measurement: "°C"
+        state: "{{ states('input_number.temp') }}"
+  - light:
+      - name: Kids lamp
+        unique_id: scratcha_kids_lamp
+        state: "{{ is_state('input_boolean.kids_lamp_power', 'on') }}"
+        level: "{{ states('input_number.kids_lamp_level') | int(0) }}"
+        turn_on:
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.kids_lamp_power
+        turn_off:
+          - action: input_boolean.turn_off
+            target:
+              entity_id: input_boolean.kids_lamp_power
+        set_level:
+          - action: input_number.set_value
+            target:
+              entity_id: input_number.kids_lamp_level
+            data:
+              value: "{{ brightness }}"
+          - action: input_boolean.turn_on
+            target:
+              entity_id: input_boolean.kids_lamp_power
+
+scene:
+  - name: Party
+    entities:
+      input_boolean.lamp: "on"

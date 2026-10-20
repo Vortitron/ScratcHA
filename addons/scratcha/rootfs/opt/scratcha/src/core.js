@@ -45,7 +45,7 @@ export function slimState(state) {
 // WebSocket. Emits "state" (one slim state, or { entity_id, state: null } when
 // removed), "entities" (the allowed entity list changed) and "status".
 export class CoreClient extends EventEmitter {
-	constructor({ target, timeoutMs, isAllowed, logger, fetchImpl, WebSocketImpl, backoffMs }) {
+	constructor({ target, timeoutMs, isAllowed, logger, fetchImpl, WebSocketImpl, backoffMs, connectTimeoutMs = 15000, heartbeatMs = 30000 }) {
 		super();
 		this.target = target;
 		this.timeoutMs = timeoutMs;
@@ -61,6 +61,9 @@ export class CoreClient extends EventEmitter {
 		this.timer = null;
 		this.stopped = false;
 		this.nextId = 1;
+		this.connectTimeoutMs = connectTimeoutMs;
+		this.heartbeatMs = heartbeatMs;
+		this.heartbeat = null;
 	}
 
 	get configured() {
@@ -82,6 +85,7 @@ export class CoreClient extends EventEmitter {
 	stop() {
 		this.stopped = true;
 		clearTimeout(this.timer);
+		clearInterval(this.heartbeat);
 		if (this.ws) {
 			try {
 				this.ws.close();
@@ -112,6 +116,16 @@ export class CoreClient extends EventEmitter {
 		}
 		this.ws = ws;
 		const ids = {};
+		let awaitingPong = null;
+		// A socket can hang half open, for example while Core shuts down.
+		// Give up on it if it does not finish connecting in time.
+		const watchdog = setTimeout(() => {
+			if (this.ws === ws && this.status !== "connected") {
+				this.logger.warn("Home Assistant WebSocket did not finish connecting. Retrying.");
+				this.abandon(ws);
+			}
+		}, this.connectTimeoutMs);
+		watchdog.unref?.();
 		ws.addEventListener("message", (event) => {
 			let msg;
 			try {
@@ -132,23 +146,60 @@ export class CoreClient extends EventEmitter {
 				ws.send(JSON.stringify({ id: ids.events, type: "subscribe_events", event_type: "state_changed" }));
 			} else if (msg.type === "result" && msg.id === ids.states) {
 				if (msg.success && Array.isArray(msg.result)) {
+					clearTimeout(watchdog);
 					this.replaceMirror(msg.result);
 					this.attempt = 0;
 					this.setStatus("connected");
+					clearInterval(this.heartbeat);
+					this.heartbeat = setInterval(() => {
+						if (awaitingPong !== null) {
+							this.logger.warn("Home Assistant stopped answering pings. Reconnecting.");
+							this.abandon(ws);
+							return;
+						}
+						awaitingPong = this.nextId++;
+						try {
+							ws.send(JSON.stringify({ id: awaitingPong, type: "ping" }));
+						} catch {
+							this.abandon(ws);
+						}
+					}, this.heartbeatMs);
+					this.heartbeat.unref?.();
 				}
 			} else if (msg.type === "event" && msg.id === ids.events) {
 				this.applyChange(msg.event?.data);
+			} else if (msg.type === "pong" && msg.id === awaitingPong) {
+				awaitingPong = null;
 			}
 		});
 		ws.addEventListener("close", () => {
+			clearTimeout(watchdog);
 			if (this.ws === ws) {
 				this.ws = null;
+				clearInterval(this.heartbeat);
 				this.scheduleReconnect();
 			}
 		});
 		ws.addEventListener("error", () => {
-			// "close" follows and handles the reconnect.
+			// Node 22 fires "error" but no "close" when the connection is
+			// refused, so retry from here too. abandon() ignores repeats.
+			clearTimeout(watchdog);
+			this.abandon(ws);
 		});
+	}
+
+	abandon(ws) {
+		if (this.ws !== ws) {
+			return;
+		}
+		this.ws = null;
+		clearInterval(this.heartbeat);
+		try {
+			ws.close();
+		} catch {
+			// Ignore.
+		}
+		this.scheduleReconnect();
 	}
 
 	scheduleReconnect() {

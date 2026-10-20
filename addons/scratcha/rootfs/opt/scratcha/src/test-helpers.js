@@ -17,7 +17,7 @@ export async function startFakeCore({ states = [], token = testToken, restDelayM
 	const store = new Map(states.map((s) => [s.entity_id, s]));
 	const calls = [];
 	const sockets = new Set();
-	const fake = { store, calls, sockets, restDelayMs, failNext: null, refuseWs: false };
+	const fake = { store, calls, sockets, restDelayMs, failNext: null, refuseWs: false, ignorePings: false };
 
 	const server = http.createServer((req, res) => {
 		handle(req, res).catch(() => res.destroy());
@@ -111,6 +111,10 @@ export async function startFakeCore({ states = [], token = testToken, restDelayM
 					}
 				} else if (msg.type === "get_states") {
 					ws.send(JSON.stringify({ id: msg.id, type: "result", success: true, result: [...store.values()] }));
+				} else if (msg.type === "ping") {
+					if (!fake.ignorePings) {
+						ws.send(JSON.stringify({ id: msg.id, type: "pong" }));
+					}
 				} else if (msg.type === "subscribe_events") {
 					client.subscription = msg.id;
 					ws.send(JSON.stringify({ id: msg.id, type: "result", success: true, result: null }));
