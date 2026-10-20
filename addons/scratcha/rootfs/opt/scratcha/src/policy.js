@@ -21,6 +21,9 @@ const targetKeys = ["area_id", "device_id", "floor_id", "label_id"];
 const maxEntities = 20;
 const pinMaxFails = 5;
 const pinLockMs = 5 * 60 * 1000;
+// A backstop for guessing from many addresses at once: this many wrong PINs
+// from anyone within pinLockMs locks the PIN for everyone.
+const pinMaxFailsAll = 20;
 
 export function createPolicy(options, deps = {}) {
 	const now = deps.now ?? Date.now;
@@ -41,6 +44,8 @@ export function createPolicy(options, deps = {}) {
 	const readBuckets = new TokenBuckets({ capacity: 30, refillPerMs: 30 / 1000, now });
 	const entityInterval = new MinInterval({ intervalMs: options.min_interval_ms, now });
 	const pinFails = new Map();
+	let allFails = [];
+	let allLockedUntil = 0;
 
 	function isEntityAllowed(entityId) {
 		return allowEntity(entityId) && !denyEntity(entityId);
@@ -103,6 +108,9 @@ export function createPolicy(options, deps = {}) {
 		if (!pin) {
 			throw bridgeError("pin_required", 403, "That needs a PIN, but no PIN is set in the add-on options.");
 		}
+		if (allLockedUntil > now()) {
+			throw bridgeError("pin_locked", 403);
+		}
 		let record = pinFails.get(client);
 		if (record && record.lockedUntil) {
 			if (record.lockedUntil > now()) {
@@ -115,8 +123,18 @@ export function createPolicy(options, deps = {}) {
 			throw bridgeError("pin_required", 403);
 		}
 		if (!safeEqual(String(given), pin)) {
+			const t = now();
+			allFails = allFails.filter((at) => t - at < pinLockMs);
+			allFails.push(t);
+			if (allFails.length >= pinMaxFailsAll) {
+				allLockedUntil = t + pinLockMs;
+				allFails = [];
+			}
+			if (pinFails.size >= 5000 && !pinFails.has(client)) {
+				pinFails.delete(pinFails.keys().next().value);
+			}
 			const fails = (record?.fails ?? 0) + 1;
-			const locked = fails >= pinMaxFails;
+			const locked = fails >= pinMaxFails || allLockedUntil > t;
 			pinFails.set(client, { fails, lockedUntil: locked ? now() + pinLockMs : 0 });
 			throw bridgeError(locked ? "pin_locked" : "pin_wrong", 403);
 		}

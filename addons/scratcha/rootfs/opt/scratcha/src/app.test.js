@@ -354,13 +354,29 @@ test("ingress port answers only the Supervisor address and only trusted ingress 
 	assert.equal(badName.status, 400);
 });
 
-test("ingress rate limits use the forwarded client address", async () => {
+test("ingress rate limits use the address Core saw, not one the browser sent", async () => {
 	const b = await bridgeWith({ ...safeOptions, rate_limit_calls: 1, rate_limit_window_s: 600, min_interval_ms: 0 });
 	const headers = { "X-Ingress-Path": "/api/hassio_ingress/abc" };
-	const a1 = await postJson(`${b.ingressBase}/bridge/services/homeassistant/turn_on`, { entity_id: "input_boolean.lamp" }, { ...headers, "X-Forwarded-For": "10.0.0.5" });
-	const a2 = await postJson(`${b.ingressBase}/bridge/services/homeassistant/turn_on`, { entity_id: "input_boolean.lamp" }, { ...headers, "X-Forwarded-For": "10.0.0.5" });
-	const other = await postJson(`${b.ingressBase}/bridge/services/homeassistant/turn_on`, { entity_id: "input_boolean.lamp" }, { ...headers, "X-Forwarded-For": "10.0.0.6" });
-	assert.deepEqual([a1.status, a2.status, other.status], [200, 429, 200]);
+	// Core adds the address it saw, then the Supervisor adds Core's.
+	const call = (xff) => postJson(`${b.ingressBase}/bridge/services/homeassistant/turn_on`, { entity_id: "input_boolean.lamp" }, { ...headers, "X-Forwarded-For": xff });
+	const a1 = await call("10.0.0.5, 172.30.32.1");
+	const a2 = await call("10.0.0.5, 172.30.32.1");
+	const spoofed = await call("1.2.3.4, 10.0.0.5, 172.30.32.1");
+	const other = await call("10.0.0.6, 172.30.32.1");
+	assert.deepEqual([a1.status, a2.status, spoofed.status, other.status], [200, 429, 429, 200]);
+});
+
+test("ingress PIN lockout cannot be dodged with a made-up X-Forwarded-For", async () => {
+	const b = await bridgeWith({ ...safeOptions, min_interval_ms: 0 });
+	const headers = { "X-Ingress-Path": "/api/hassio_ingress/abc" };
+	const codes = [];
+	for (let n = 0; n < 7; n += 1) {
+		const res = await postJson(`${b.ingressBase}/bridge/services/scene/turn_on`, { entity_id: "scene.party" }, { ...headers, "X-ScratcHA-PIN": `000${n}`, "X-Forwarded-For": `1.2.3.${n}, 10.0.0.5, 172.30.32.1` });
+		codes.push((await res.json()).error);
+	}
+	assert.deepEqual(codes, ["pin_wrong", "pin_wrong", "pin_wrong", "pin_wrong", "pin_locked", "pin_locked", "pin_locked"]);
+	const right = await postJson(`${b.ingressBase}/bridge/services/scene/turn_on`, { entity_id: "scene.party" }, { ...headers, "X-ScratcHA-PIN": "2468", "X-Forwarded-For": "9.9.9.9, 10.0.0.5, 172.30.32.1" });
+	assert.equal((await right.json()).error, "pin_locked");
 });
 
 test("SSE: headers, config and snapshot, live changes, filter", async () => {

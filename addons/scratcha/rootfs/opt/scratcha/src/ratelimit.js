@@ -13,8 +13,10 @@ export class TokenBuckets {
 		const t = this.now();
 		let bucket = this.buckets.get(key);
 		if (!bucket) {
+			// Drop the oldest key, not all of them. Clearing would hand every
+			// client a full bucket again.
 			if (this.buckets.size >= this.maxKeys) {
-				this.buckets.clear();
+				this.buckets.delete(this.buckets.keys().next().value);
 			}
 			bucket = { tokens: this.capacity, at: t };
 			this.buckets.set(key, bucket);

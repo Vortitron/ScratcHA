@@ -106,7 +106,7 @@ Blocks take the ID, such as `light.kids_room`, or the friendly name shown in "Wh
 | `read_only` | `false` | Refuse every service call. Reading still works. |
 | `protected_services` | empty | Services that need the PIN. |
 | `protected_entities` | empty | Entities that need the PIN to control. |
-| `pin_code` | empty | The PIN. If something is protected and this is empty, it is always refused. After 5 wrong tries a device is locked out for 5 minutes. |
+| `pin_code` | empty | The PIN. If something is protected and this is empty, it is always refused. After 5 wrong tries a device is locked out for 5 minutes. After 20 wrong tries from all devices within 5 minutes, it is locked for everyone for 5 minutes. |
 | `rate_limit_calls` | `10` | Service calls allowed per device in each window. Short bursts of half that are allowed. |
 | `rate_limit_window_s` | `10` | The window in seconds. |
 | `min_interval_ms` | `500` | Shortest time between two changes to one entity, across all devices. Stops a `forever` loop chattering a relay. |

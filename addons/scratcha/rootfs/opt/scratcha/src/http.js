@@ -49,10 +49,13 @@ export function ingressPathOf(req) {
 
 // Who is asking, for rate limits and PIN lockout. Behind ingress every
 // request comes from the Supervisor, so use the forwarded address instead.
+// Core keeps whatever X-Forwarded-For the browser sent and adds the address
+// it saw. The Supervisor then adds Core's address. So only the second to
+// last entry can be trusted. The first is whatever the browser made up.
 export function clientIdOf(req) {
 	if (req.scratcha?.ingress) {
-		const forwarded = String(req.headers["x-forwarded-for"] ?? "").split(",")[0].trim();
-		return forwarded ? `ingress:${forwarded}` : "ingress";
+		const chain = String(req.headers["x-forwarded-for"] ?? "").split(",").map((s) => s.trim()).filter(Boolean);
+		return chain.length >= 2 ? `ingress:${chain[chain.length - 2]}` : "ingress";
 	}
 	return String(req.socket?.remoteAddress ?? "unknown");
 }

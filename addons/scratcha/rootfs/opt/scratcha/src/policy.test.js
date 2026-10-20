@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { createPolicy } from "./policy.js";
 import { normalizeOptions } from "./options.js";
+import { TokenBuckets } from "./ratelimit.js";
 
 function policyFor(raw, clock = { t: 1_000_000 }) {
 	const { options } = normalizeOptions(raw);
@@ -142,6 +143,18 @@ test("PIN lockout after 5 wrong tries, per client, for 5 minutes", () => {
 	assert.equal(call(policy, "scene", "turn_on", body, { pin: "4321" }), "ok");
 });
 
+test("PIN: many wrong tries from many clients lock it for everyone", () => {
+	const { policy, clock } = policyFor({ ...base, protected_entities: ["scene.party"], pin_code: "4321" });
+	const body = { entity_id: "scene.party" };
+	for (let i = 0; i < 19; i += 1) {
+		assert.equal(call(policy, "scene", "turn_on", body, { pin: "1111", client: `x${i}` }), "pin_wrong");
+	}
+	assert.equal(call(policy, "scene", "turn_on", body, { pin: "1111", client: "x19" }), "pin_locked");
+	assert.equal(call(policy, "scene", "turn_on", body, { pin: "4321", client: "fresh" }), "pin_locked");
+	clock.t += 5 * 60 * 1000 + 1;
+	assert.equal(call(policy, "scene", "turn_on", body, { pin: "4321", client: "fresh" }), "ok");
+});
+
 test("protected but no PIN set fails closed", () => {
 	const { policy } = policyFor({ ...base, protected_entities: ["scene.party"] });
 	assert.equal(call(policy, "scene", "turn_on", { entity_id: "scene.party" }, { pin: "" }), "pin_required");
@@ -191,4 +204,16 @@ test("summary flags empty list and star", () => {
 	const s = policyFor({ ...base, pin_code: "1" }).policy.summary();
 	assert.equal(s.pin_enabled, true);
 	assert.equal(JSON.stringify(s).includes("\"1\""), false);
+});
+
+test("token buckets drop the oldest key when full, not every key", () => {
+	const buckets = new TokenBuckets({ capacity: 1, refillPerMs: 0, now: () => 0, maxKeys: 3 });
+	assert.equal(buckets.take("busy"), true);
+	assert.equal(buckets.take("busy"), false);
+	assert.equal(buckets.take("a"), true);
+	assert.equal(buckets.take("b"), true);
+	assert.equal(buckets.take("c"), true);
+	// "busy" was the oldest and is gone, but "a" and "b" keep their empty buckets.
+	assert.equal(buckets.take("a"), false);
+	assert.equal(buckets.take("b"), false);
 });
