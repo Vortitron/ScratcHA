@@ -59,7 +59,9 @@ export function createPolicy(options, deps = {}) {
 		}
 	}
 
-	// Collects entity IDs from data and target, rejecting broad targets.
+	// Collects entity IDs from the data, rejecting broad targets. The Core
+	// REST API passes the body on as service data and never reads "target",
+	// so a call named only there would do nothing. Refuse it instead.
 	function targetsOf(body) {
 		const found = [];
 		const scopes = [body];
@@ -75,18 +77,21 @@ export function createPolicy(options, deps = {}) {
 					throw bridgeError("not_allowed", 403, `Targets by ${key.replace("_id", "")} are not allowed. Name each entity.`);
 				}
 			}
-			if (scope.entity_id === undefined) {
-				continue;
+		}
+		if (body.target !== undefined && Object.keys(body.target).length > 0) {
+			throw bridgeError("bad_request", 400, "Put entity_id at the top level of the service data, not inside target.");
+		}
+		if (body.entity_id === undefined) {
+			return found;
+		}
+		const ids = Array.isArray(body.entity_id)
+			? body.entity_id
+			: typeof body.entity_id === "string" ? body.entity_id.split(",").map((s) => s.trim()) : [body.entity_id];
+		for (const id of ids) {
+			if (id === "all" || id === "none") {
+				throw bridgeError("not_allowed", 403, "entity_id \"all\" is not allowed. Name each entity.");
 			}
-			const ids = Array.isArray(scope.entity_id)
-				? scope.entity_id
-				: typeof scope.entity_id === "string" ? scope.entity_id.split(",").map((s) => s.trim()) : [scope.entity_id];
-			for (const id of ids) {
-				if (id === "all" || id === "none") {
-					throw bridgeError("not_allowed", 403, "entity_id \"all\" is not allowed. Name each entity.");
-				}
-				found.push(assertEntityId(id));
-			}
+			found.push(assertEntityId(id));
 		}
 		return [...new Set(found)];
 	}

@@ -151,7 +151,6 @@ test("main power stays off limits even with input_boolean.* allowed", async () =
 	for (const body of [
 		{ entity_id: "input_boolean.house_main_power" },
 		{ entity_id: ["input_boolean.lamp", "input_boolean.house_main_power"] },
-		{ target: { entity_id: "input_boolean.house_main_power" } },
 		{ entity_id: "all" },
 		{ area_id: "house" }
 	]) {
@@ -159,6 +158,10 @@ test("main power stays off limits even with input_boolean.* allowed", async () =
 		assert.equal(res.status, 403, JSON.stringify(body));
 		assert.equal((await res.json()).error, "not_allowed");
 	}
+	assert.equal(fake.calls.length, 0);
+	const inTarget = await postJson(`${b.base}/bridge/services/homeassistant/turn_off`, { target: { entity_id: "input_boolean.house_main_power" } });
+	assert.equal(inTarget.status, 400);
+	assert.match((await inTarget.json()).message, /top level/);
 	assert.equal(fake.calls.length, 0);
 });
 

@@ -57,8 +57,16 @@ test("entity_id as string, comma list and array", () => {
 	assert.equal(call(policy, "homeassistant", "turn_on", { entity_id: "input_boolean.a, input_boolean.b" }), "ok");
 	assert.equal(call(policy, "homeassistant", "turn_on", { entity_id: ["input_boolean.c", "input_boolean.d"] }), "ok");
 	assert.equal(call(policy, "homeassistant", "turn_on", { entity_id: ["input_boolean.e", "input_boolean.house_main_power"] }), "not_allowed");
-	assert.equal(call(policy, "homeassistant", "turn_on", { target: { entity_id: "input_boolean.house_main_power" } }), "not_allowed");
-	assert.equal(call(policy, "homeassistant", "turn_on", { target: { entity_id: "input_boolean.f" } }), "ok");
+});
+
+test("entities named only in target are refused, because Core REST ignores target", () => {
+	const { policy } = policyFor({ ...base, min_interval_ms: 500 });
+	assert.equal(call(policy, "homeassistant", "toggle", { target: { entity_id: "input_boolean.f" } }), "bad_request");
+	assert.equal(call(policy, "homeassistant", "turn_on", { target: { entity_id: "input_boolean.house_main_power" } }), "bad_request");
+	assert.equal(call(policy, "homeassistant", "turn_on", { entity_id: "input_boolean.f", target: { entity_id: "input_boolean.g" } }), "bad_request");
+	assert.equal(call(policy, "homeassistant", "turn_on", { entity_id: "input_boolean.h", target: {} }), "ok");
+	// The refused call did not use up the per-entity interval.
+	assert.equal(call(policy, "homeassistant", "toggle", { entity_id: "input_boolean.f" }), "ok");
 });
 
 test("all, area, device, floor and label targets are rejected", () => {
