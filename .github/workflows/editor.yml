@@ -47,6 +47,11 @@ jobs:
           npm ci
           npm run build
           test -f build/editor.html
+      - name: Record the source for the GPL notice
+        run: |
+          printf '{"commit":"%s","source":"https://github.com/TurboWarp/scratch-gui/tree/%s","patches":"https://github.com/%s/tree/%s/editor/patches"}\n' \
+            "${{ steps.pin.outputs.sha }}" "${{ steps.pin.outputs.sha }}" "${{ github.repository }}" "${{ github.sha }}" \
+            > scratch-gui/build/scratcha-source.json
       - name: Package
         run: |
           name="turbowarp-editor-${{ steps.pin.outputs.sha }}.tar.gz"

@@ -405,3 +405,21 @@ Runner: `node:test` (built in), no extra test framework. Tests live next to the 
 - More blocks (media, climate scheduling, notifications), translations beyond English.
 - Per-kid profiles with separate allowlists.
 - A HACS integration that exposes the bridge on HA's own HTTPS port, which would let turbowarp.org work in every house with remote access.
+
+---
+
+## 9. Notes from the build pass
+
+Where the build differs from the plan above, and why.
+
+- **Extension location.** `scratcha.js` lives in `addons/scratcha/rootfs/opt/scratcha/extension/`, not a top-level `extension/`. The Supervisor builds with the add-on folder as the Docker context, so nothing outside it can be copied in.
+- **config.yaml defaults.** `startup`, `boot` and `panel_icon` are left out. The add-on linter fails on keys that repeat a default.
+- **Burst.** The per-client burst is half of `rate_limit_calls`, rounded up. With the defaults that is 5, as planned.
+- **Sandboxed menus.** The VM cannot call into a sandboxed worker to build a dynamic menu, and the palette breaks if it tries. Sandboxed, the menus are fixed lists made at register time. Unsandboxed, they stay dynamic.
+- **Node 22 WebSocket.** A refused connection fires `error` but never `close`. The Core client retries on `error`, has a 15 second connect watchdog and a 30 second ping heartbeat.
+- **Extra error codes.** `pin_locked` (lockout), `busy` (more than 20 SSE streams). A refused `Host` gets HTTP 421 with plain text. `localhost` is accepted as a host name too, since it cannot be rebound.
+- **Config events.** Options only change on restart, so SSE sends `config` when a stream opens and when the set of allowed entities changes.
+- **Editor source.** The editor build writes `scratcha-source.json` (commit, source and patch links). The landing page shows them for the GPL notice.
+- **E2E onboarding.** The `core_config` step is skipped and `hass` runs with `--skip-pip`. That step adds integrations that need the internet, and they hung the restart test.
+- **turbowarp.org test.** Port 8000 can be busy on a dev machine, so Playwright routes `localhost:8000` and `localhost:8001` to the bridge. SSE is aborted in the route because routed responses are buffered, which also covers the polling fallback.
+- **AppArmor.** Shipped in the add-on folder, broad on files, limited on capabilities and network families. Not checked on a real Supervisor.

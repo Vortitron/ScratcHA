@@ -1,56 +1,101 @@
-# ScratcHA – Home Assistant + TurboWarp Bridge
+# ScratcHA
 
-Goal
-- Build a client-first bridge so Scratch/TurboWarp projects can call Home Assistant (HA) safely, with minimal setup for kids and hobbyists.
-- First target: HA Add-on (or HACS integration) to avoid CORS pain by serving assets and providing a trusted API proxy. Later: static build for GitHub Pages or similar.
+ScratcHA is a Home Assistant add-on that lets Scratch projects made in TurboWarp read and control a home, safely. It is aimed at kids and hobbyists.
 
-Principles
-- Keep everything sandboxed to HA’s network; no need for external servers.
-- Use long-lived tokens but encourage least-privilege accounts for the bridge.
-- Prefer plain HTTP/JSON blocks and extensions already available in TurboWarp; avoid bespoke runtimes if possible.
-- ES modules and modern JS where relevant; no dynamic imports.
+A kid opens ScratcHA from the Home Assistant sidebar or on the home network, makes a project with the **Home** blocks, clicks the green flag and the lamp changes. A grown-up decides exactly what the blocks may touch. Nothing is allowed until it is listed.
 
-High-level approach
-- HA side: lightweight proxy endpoint that fronts /api (configurable allowlist of entities/services) and serves the packaged TurboWarp project. Runs as an Add-on or HACS resource to sidestep CORS.
-- Client side: TurboWarp project using HTTP/JSON/TTS extensions to query and control HA entities, plus a small JS helper for headers and error handling.
-- Packaging: TurboWarp Packager to emit a self-contained HTML/JS bundle that the HA add-on hosts; later versions can be deployed as static web assets elsewhere.
+Setup and every option are in [addons/scratcha/DOCS.md](addons/scratcha/DOCS.md). The design and its reasons are in [docs/SPEC.md](docs/SPEC.md).
 
-Setup sketch (HA add-on path)
-- Install add-on (or HACS resource) that exposes a local URL, e.g. /local/scratcha/.
-- Configure bridge: HA base URL, scoped token, allowed entities/services, polling interval.
-- Open the hosted page; the TurboWarp project reads config from a served JSON file and calls the proxy for GET/POST to HA.
+## How it works
 
-Planned capabilities
-- Read-only: announce temperatures, door/motion status, energy usage, etc.
-- Control: toggle lights/switches/scenes with debounced calls and basic error toasts.
-- Friendly UX: cartoon assistant (cat/dog/Bob throwback) with speech bubbles or TTS.
-- Offline-friendly LAN use; no cloud dependency beyond HA itself.
+turbowarp.org is an HTTPS site and the add-on is plain HTTP on your network, so the browser blocks the two from talking (mixed content). ScratcHA avoids this by serving everything from the add-on itself:
 
-Repository layout
-- `addons/scratcha/config.json` – HA add-on manifest (ports, schema, options, host networking).
-- `addons/scratcha/Dockerfile` – builds a Node-based proxy/host container.
-- `addons/scratcha/rootfs/etc/services.d/scratcha/run` – s6 launch script that runs the bridge.
-- `addons/scratcha/rootfs/opt/scratcha/src/server.js` – express server: static hosting + HA proxy with allowlists and optional caching.
+- **Bridge**: a Node server inside the add-on. It talks to Home Assistant through the Supervisor and applies the safety rules.
+- **Extension**: `scratcha.js`, the TurboWarp extension with the Home blocks. The bridge writes its own address into it.
+- **Editor**: an optional TurboWarp editor build, served by the add-on.
+- **Player**: `.sb3` files from `/share/scratcha/projects`, turned into full-screen players with the TurboWarp Packager.
+- **Pages**: a kids' landing page and a status and test page for grown-ups.
 
-Add-on usage (dev path)
-- Build: `docker build -t scratcha:addon addons/scratcha`.
-- Run locally (example): `docker run --net=host -v $PWD/dev-options.json:/data/options.json scratcha:addon`.
-- Required option: `access_token` (HA long-lived, ideally scoped user). Optional: `homeassistant_url`, `allowed_entities`, `allowed_services`, `cache_seconds`, `cors_allow_origin`, `host`, `port`, `static_dir`, `timeout_ms`, `protected_services`, `pin_code`.
-- Static assets: place packaged TurboWarp bundle under `/share/scratcha/www` (or set `static_dir`). The bridge serves that folder if present.
-- Proxy endpoints exposed on `:8099` by default: `/bridge/health`, `/bridge/config`, `/bridge/states`, `/bridge/states/:entityId`, `/bridge/services/:domain/:service`.
+## Safety
 
-Demo bundle
-- Simple demos live under `examples/`:
-  - `demo-www` — basic bridge tester for config/states/services.
-  - `turbowarp-demo` — sensor read + speech and light toggle (with optional PIN header) to mirror what a TurboWarp project would do. Copy either folder to `/share/scratcha/www` (or your configured `static_dir`).
+- Deny by default. Allow and deny lists take exact IDs or `*` patterns, and deny wins.
+- Every call must name its entities. "All", areas, devices, floors and labels are refused.
+- Read-only mode, a PIN with lockout for protected things (refused if no PIN is set), and rate limits per device and per entity.
+- The token and Core error details never leave the bridge.
+- The network port only answers to IP addresses, `homeassistant.local` and names you list, which blocks DNS rebinding.
 
-Security and safety
-- Keep tokens browser-side but limit scope; recommend a dedicated HA user with minimal permissions.
-- Optional PIN/confirmation for risky actions (e.g. unlocking doors).
-- CORS handled by serving from HA; no public exposure by default.
+## Repository layout
 
-Next steps
-- Build TurboWarp demo project that fetches a sensor state and speaks it, then package to `/share/scratcha/www`.
-- Add tests (Node) with mocked HA responses for the proxy and allowlists. (`npm test` in `addons/scratcha/rootfs/opt/scratcha`.) -> now includes PIN/timeout coverage.
-- Publish add-on repository metadata so HA can install it directly.
-- Document deployment for add-on and static-hosted variants.
+```
+repository.yaml                  add-on repository metadata
+addons/scratcha/                 the add-on
+	config.yaml, Dockerfile, DOCS.md, CHANGELOG.md, apparmor.txt, translations/
+	rootfs/etc/services.d/scratcha/   s6 run and finish scripts
+	rootfs/opt/scratcha/              the bridge
+		src/                          server, safety rules, Core client, SSE, player
+		src/*.test.js                 unit tests
+		extension/scratcha.js         the TurboWarp extension
+		public/                       landing and status pages
+editor/                          pinned TurboWarp/scratch-gui commit and our patch
+examples/ScratcHA demo.sb3       demo project
+art/                             icon and logo sources
+test/                            end-to-end and browser tests, and tools
+docs/SPEC.md                     the spec
+.github/workflows/               CI and the editor build
+```
+
+The extension lives inside the add-on folder, not in a top-level `extension/` folder as the spec suggested. The Supervisor builds the image with the add-on folder as the Docker context, so files outside it cannot be copied in.
+
+## Development
+
+Needs Node 22.
+
+```sh
+cd addons/scratcha/rootfs/opt/scratcha
+npm ci
+npm test
+```
+
+Run the bridge outside Home Assistant with a long-lived token:
+
+```sh
+cat > /tmp/scratcha-options.json <<'JSON'
+{
+	"access_token": "YOUR_TOKEN",
+	"homeassistant_url": "http://homeassistant.local:8123",
+	"allowed_entities": ["light.kids_room"]
+}
+JSON
+OPTIONS_PATH=/tmp/scratcha-options.json SCRATCHA_DATA_DIR=/tmp/scratcha-data \
+	SCRATCHA_INGRESS_PORT=0 npm start
+```
+
+Then open `http://localhost:8099/`. Other environment variables: `SCRATCHA_LAN_PORT`, `SCRATCHA_BIND`, `SCRATCHA_SSL_DIR`, `SCRATCHA_EDITOR_DIR`, and `SCRATCHA_CORE_URL` (points Supervisor mode at another Core, for tests).
+
+### End-to-end and browser tests
+
+These start a throwaway Home Assistant from a Python venv on a free `127.0.0.1` port. They never contact any other Home Assistant.
+
+```sh
+python3.13 -m venv ~/ha-venv && ~/ha-venv/bin/pip install homeassistant==2026.2.3
+cd test
+npm ci
+npx playwright-core install chromium
+SCRATCHA_HASS=~/ha-venv/bin/hass npm run e2e
+SCRATCHA_HASS=~/ha-venv/bin/hass npm run browser
+```
+
+The browser suite includes an optional test in the real turbowarp.org editor. It is skipped when turbowarp.org cannot be reached, or when `SCRATCHA_SKIP_ONLINE=1` is set. Temporary files go in `test/.tmp` and are removed afterwards. Set `SCRATCHA_KEEP_TMP=1` to keep the Home Assistant folder and its log.
+
+### Tools
+
+- `node test/tools/build-demo.mjs` rebuilds the demo project.
+- `node test/tools/render-art.mjs` renders `icon.png` and `logo.png` from `art/`.
+
+### Editor build
+
+The `Editor build` workflow builds TurboWarp/scratch-gui at the commit in `editor/SCRATCH_GUI_COMMIT` with `editor/patches/*.patch`, and publishes `turbowarp-editor-<sha>.tar.gz` with a SHA-256 file. Build the add-on image with `EDITOR_URL` and `EDITOR_SHA256` to include it.
+
+## Licences
+
+ScratcHA is MIT licensed. The TurboWarp editor is GPL-3.0 and the TurboWarp Packager is MPL-2.0.

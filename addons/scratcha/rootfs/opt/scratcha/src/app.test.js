@@ -378,3 +378,52 @@ test("pages and fallbacks", async () => {
 	assert.equal(unknown.status, 404);
 	assert.equal((await unknown.json()).error, "not_found");
 });
+
+test("editor: served when present, with its GPL source in the config", async () => {
+	const fs = await import("node:fs");
+	const os = await import("node:os");
+	const path = await import("node:path");
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scratcha-editor-"));
+	try {
+		fs.writeFileSync(path.join(dir, "editor.html"), "<!doctype html><title>TurboWarp</title>");
+		fs.writeFileSync(path.join(dir, "scratcha-source.json"), JSON.stringify({ commit: "abc123", source: "https://github.com/TurboWarp/scratch-gui/tree/abc123", patches: "javascript:alert(1)" }));
+		const b = await bridgeWith(safeOptions, { deps: { editorDir: dir } });
+		const config = await (await fetch(`${b.base}/bridge/config`)).json();
+		assert.equal(config.editor, true);
+		assert.deepEqual(config.editor_source, { commit: "abc123", source: "https://github.com/TurboWarp/scratch-gui/tree/abc123", patches: null });
+		assert.match(await (await fetch(`${b.base}/editor/editor.html`)).text(), /TurboWarp/);
+		assert.match(await (await fetch(`${b.base}/editor/`)).text(), /TurboWarp/);
+		const redirect = await fetch(`${b.base}/editor`, { redirect: "manual" });
+		assert.equal(redirect.status, 302);
+		assert.equal(redirect.headers.get("location"), "editor/");
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
+
+test("player route packages a project from projects_dir", async () => {
+	const fs = await import("node:fs");
+	const os = await import("node:os");
+	const path = await import("node:path");
+	const JSZip = (await import("@turbowarp/jszip")).default;
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scratcha-play-"));
+	try {
+		const zip = new JSZip();
+		const project = { targets: [{ isStage: true, name: "Stage", variables: {}, lists: {}, broadcasts: {}, blocks: {}, comments: {}, currentCostume: 0, costumes: [], sounds: [], volume: 100, layerOrder: 0 }], monitors: [], extensions: ["scratcha"], extensionURLs: { scratcha: "http://elsewhere.example/scratcha.js" }, meta: { semver: "3.0.0" } };
+		zip.file("project.json", JSON.stringify(project));
+		fs.writeFileSync(path.join(dir, "My game.sb3"), await zip.generateAsync({ type: "nodebuffer" }));
+		fs.writeFileSync(path.join(dir, "bad name!.sb3"), "x");
+		const b = await bridgeWith({ ...safeOptions, projects_dir: dir }, { deps: { dataDir: path.join(dir, "data") } });
+		const list = await (await fetch(`${b.base}/play/list.json`)).json();
+		assert.deepEqual(list.map((p) => p.file), ["My game.sb3"]);
+		const res = await fetch(`${b.base}/play/My%20game.html`);
+		assert.equal(res.status, 200);
+		const html = await res.text();
+		assert.ok(html.includes("data:text/javascript;base64,"));
+		assert.ok(!html.includes("elsewhere.example"));
+		assert.equal((await fetch(`${b.base}/play/missing.html`)).status, 404);
+		assert.ok(fs.readdirSync(path.join(dir, "data", "cache")).length === 1, "cached");
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});

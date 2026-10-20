@@ -42,6 +42,16 @@ async function start() {
 			const extension = new URL("extension/scratcha.js", location.href).href;
 			$("make").href = `editor/editor.html?extension=${encodeURIComponent(extension)}`;
 			$("make").hidden = false;
+			const source = config.editor_source;
+			if (source?.source) {
+				const link = document.createElement("a");
+				link.href = source.source;
+				link.textContent = "editor source";
+				const patch = document.createElement("a");
+				patch.href = source.patches ?? source.source;
+				patch.textContent = "patch";
+				$("editor-source").append(" · The editor is TurboWarp, GPL-3.0: ", link, " and ", patch, ".");
+			}
 		} else {
 			$("no-editor").hidden = false;
 		}

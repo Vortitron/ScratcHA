@@ -54,6 +54,17 @@ export function createBridge(options, deps = {}) {
 
 	const hasEditor = () => fs.existsSync(path.join(editorDir, "editor.html"));
 
+	// The editor is GPL-3.0. Its build records the exact source it came from.
+	function editorSource() {
+		try {
+			const info = JSON.parse(fs.readFileSync(path.join(editorDir, "scratcha-source.json"), "utf8"));
+			const safe = (url) => (typeof url === "string" && url.startsWith("https://github.com/") ? url : null);
+			return { commit: String(info.commit ?? "").slice(0, 40), source: safe(info.source), patches: safe(info.patches) };
+		} catch {
+			return null;
+		}
+	}
+
 	function publicConfig() {
 		return {
 			version,
@@ -63,6 +74,7 @@ export function createBridge(options, deps = {}) {
 			poll_ms: 2000,
 			timeout_ms: options.timeout_ms,
 			editor: hasEditor(),
+			editor_source: hasEditor() ? editorSource() : null,
 			ssl: options.ssl,
 			cors_allow_origins: options.cors_allow_origins,
 			cors_allow_any: options.cors_allow_origins.includes("*"),
