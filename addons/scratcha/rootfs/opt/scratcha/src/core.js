@@ -281,8 +281,23 @@ export class CoreClient extends EventEmitter {
 		if (!this.configured) {
 			throw bridgeError("ha_unavailable", 503, "Home Assistant is not configured for ScratcHA.");
 		}
+		// The timer covers the whole exchange, body included. A Core that
+		// sends headers and then stalls must not hang the request.
 		const controller = new AbortController();
 		const timer = setTimeout(() => controller.abort(), this.timeoutMs);
+		try {
+			return await this.exchange(method, path, body, controller.signal);
+		} catch (error) {
+			if (controller.signal.aborted && !(error instanceof BridgeError)) {
+				throw bridgeError("timeout", 504, `Home Assistant did not answer within ${this.timeoutMs} ms.`);
+			}
+			throw error;
+		} finally {
+			clearTimeout(timer);
+		}
+	}
+
+	async exchange(method, path, body, signal) {
 		let response;
 		try {
 			response = await this.fetch(`${this.target.restBase}${path}`, {
@@ -293,24 +308,24 @@ export class CoreClient extends EventEmitter {
 					Authorization: `Bearer ${this.target.token}`
 				},
 				body: body === undefined ? undefined : JSON.stringify(body),
-				signal: controller.signal
+				signal
 			});
 		} catch (error) {
-			if (error.name === "AbortError") {
-				throw bridgeError("timeout", 504, `Home Assistant did not answer within ${this.timeoutMs} ms.`);
+			if (signal.aborted) {
+				throw error;
 			}
 			this.logger.warn(`Core ${method} ${path} failed: ${error.message}`);
 			throw bridgeError("ha_unavailable", 502);
-		} finally {
-			clearTimeout(timer);
 		}
 		if (!response.ok) {
 			// The Core body may hold details we do not want to pass on. Log it only.
 			let text = "";
 			try {
 				text = (await response.text()).slice(0, 300);
-			} catch {
-				// Ignore.
+			} catch (error) {
+				if (signal.aborted) {
+					throw error;
+				}
 			}
 			this.logger.warn(`Core ${method} ${path} returned ${response.status}: ${text}`);
 			if (response.status === 404) {
@@ -324,8 +339,17 @@ export class CoreClient extends EventEmitter {
 			}
 			throw bridgeError("ha_error", 502);
 		}
+		let text;
 		try {
-			return await response.json();
+			text = await response.text();
+		} catch (error) {
+			if (signal.aborted) {
+				throw error;
+			}
+			throw bridgeError("ha_error", 502, "Home Assistant sent an answer the bridge could not read.");
+		}
+		try {
+			return JSON.parse(text);
 		} catch {
 			throw bridgeError("ha_error", 502, "Home Assistant sent an answer the bridge could not read.");
 		}

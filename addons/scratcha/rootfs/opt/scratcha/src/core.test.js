@@ -121,6 +121,26 @@ test("REST: unreachable Core is ha_unavailable", async () => {
 	await assert.rejects(core.rest("GET", "/states"), (e) => e.code === "ha_unavailable");
 });
 
+test("REST: a Core that stalls after the headers times out", async () => {
+	const http = await import("node:http");
+	const server = http.createServer((req, res) => {
+		res.writeHead(200, { "Content-Type": "application/json", "Content-Length": "1000" });
+		res.write("[");
+		// Never send the rest of the body.
+	});
+	await new Promise((r) => server.listen(0, "127.0.0.1", r));
+	const port = server.address().port;
+	const core = new CoreClient({ target: { mode: "token", token: "t", restBase: `http://127.0.0.1:${port}/api`, wsUrl: "ws://127.0.0.1:9" }, timeoutMs: 1000, isAllowed: () => true, logger: quiet });
+	const started = Date.now();
+	try {
+		await assert.rejects(core.rest("GET", "/states"), (e) => e.code === "timeout" && e.status === 504);
+		assert.ok(Date.now() - started < 3000, `took ${Date.now() - started} ms`);
+	} finally {
+		server.closeAllConnections();
+		server.close();
+	}
+});
+
 test("reconnects when Core was down at start (refused, not just closed)", async () => {
 	const fake = await startFakeCore({ states: [makeState("light.a", "off")] });
 	const port = new URL(fake.url).port;
