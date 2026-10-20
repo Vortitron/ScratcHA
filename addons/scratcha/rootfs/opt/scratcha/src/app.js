@@ -142,7 +142,7 @@ export function createBridge(options, deps = {}) {
 	});
 
 	app.get("/bridge/config", (req, res) => {
-		res.json(publicConfig());
+		res.json({ ...publicConfig(), can_upload: Boolean(req.scratcha.trusted) });
 	});
 
 	app.get("/bridge/entities", wrap(async (req, res) => {

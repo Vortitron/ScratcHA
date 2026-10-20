@@ -49,7 +49,7 @@ The kids' page has three big buttons:
 - **Play a project** lists the `.sb3` files in `/share/scratcha/projects` and plays them full screen.
 - **What can I control?** shows the allowed things and their state.
 
-To add a project to Play, save it from TurboWarp as an `.sb3` file and copy it to `/share/scratcha/projects` (for example with the Samba or File editor add-ons). Names may use letters, numbers, spaces, `-` and `_`.
+To add a project to Play, save it from TurboWarp as an `.sb3` file. In the ScratcHA panel, use **Save to ScratcHA** on the kids' page to upload it. Or copy it to `/share/scratcha/projects` yourself, for example with the Samba or File editor add-ons. Names may use letters, numbers, spaces, `-` and `_`. Uploads only work from the panel, where the user is logged in to Home Assistant.
 
 A demo project is in the repository at `examples/ScratcHA demo.sb3`. It uses `light.kids_room` and `sensor.room_temperature`. Change those in the editor to your own.
 
@@ -134,7 +134,7 @@ The panel inside Home Assistant keeps working as before.
 - Browsers block HTTP requests from HTTPS pages, which is called mixed content. So turbowarp.org cannot reach the add-on on plain HTTP, and the add-on serves its own pages instead.
 - The editor is built from TurboWarp's source and is not part of every image. Without it, "Make a project" is hidden. Make projects on turbowarp.org or TurboWarp Desktop, then put the `.sb3` file in the projects folder. The Home blocks load there but cannot reach your home, so they report "Can't reach home." until the project plays from the add-on.
 - In a sandboxed TurboWarp extension the menus are fixed when the extension loads. Reload the page after changing the allowed list.
-- Projects cannot be saved straight back to the add-on yet. Use File > Save to your computer.
+- The editor cannot save straight back to the add-on yet. Use File > Save to your computer, then Save to ScratcHA in the panel.
 
 ## Licences
 

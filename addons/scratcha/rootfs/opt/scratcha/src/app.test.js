@@ -427,3 +427,28 @@ test("player route packages a project from projects_dir", async () => {
 		fs.rmSync(dir, { recursive: true, force: true });
 	}
 });
+
+test("trusted ingress can upload a project, and config says so", async () => {
+	const fs = await import("node:fs");
+	const os = await import("node:os");
+	const path = await import("node:path");
+	const JSZip = (await import("@turbowarp/jszip")).default;
+	const dir = fs.mkdtempSync(path.join(os.tmpdir(), "scratcha-upload-"));
+	try {
+		const b = await bridgeWith({ ...safeOptions, projects_dir: path.join(dir, "projects") });
+		const ingress = { "X-Ingress-Path": "/api/hassio_ingress/abc" };
+		assert.equal((await (await fetch(`${b.base}/bridge/config`)).json()).can_upload, false);
+		assert.equal((await (await fetch(`${b.ingressBase}/bridge/config`, { headers: ingress })).json()).can_upload, true);
+		const zip = new JSZip();
+		zip.file("project.json", "{}");
+		const res = await fetch(`${b.ingressBase}/projects?name=${encodeURIComponent("My game.sb3")}`, {
+			method: "POST",
+			headers: { ...ingress, "Content-Type": "application/octet-stream" },
+			body: await zip.generateAsync({ type: "nodebuffer" })
+		});
+		assert.equal(res.status, 200);
+		assert.ok(fs.existsSync(path.join(dir, "projects", "My game.sb3")));
+	} finally {
+		fs.rmSync(dir, { recursive: true, force: true });
+	}
+});
