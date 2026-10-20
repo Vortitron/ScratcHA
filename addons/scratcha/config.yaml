@@ -1,0 +1,69 @@
+name: ScratcHA
+version: "0.1.0"
+slug: scratcha
+description: Control your home from Scratch projects, safely.
+url: https://github.com/Vortitron/ScratcHA
+arch:
+  - aarch64
+  - amd64
+init: false
+startup: application
+boot: auto
+stage: experimental
+homeassistant_api: true
+ingress: true
+ingress_port: 8098
+panel_icon: mdi:puzzle
+panel_title: ScratcHA
+panel_admin: false
+ports:
+  8099/tcp: 8099
+ports_description:
+  8099/tcp: ScratcHA page and bridge on your home network
+map:
+  - type: share
+    read_only: false
+  - type: ssl
+options:
+  allowed_entities: []
+  denied_entities: []
+  allowed_services: []
+  allowed_services_without_target: []
+  read_only: false
+  protected_services: []
+  protected_entities: []
+  cors_allow_origins:
+    - "null"
+  allowed_hosts: []
+  ssl: false
+schema:
+  allowed_entities:
+    - str
+  denied_entities:
+    - str
+  allowed_services:
+    - str
+  allowed_services_without_target:
+    - str
+  read_only: bool
+  protected_services:
+    - str
+  protected_entities:
+    - str
+  pin_code: password?
+  rate_limit_calls: int(1,100)?
+  rate_limit_window_s: int(1,600)?
+  min_interval_ms: int(0,10000)?
+  cors_allow_origins:
+    - str
+  allowed_hosts:
+    - str
+  projects_dir: str?
+  static_dir: str?
+  ssl: bool
+  certfile: str?
+  keyfile: str?
+  timeout_ms: int(1000,60000)?
+  access_token: password?
+  homeassistant_url: url?
+  log_level: list(debug|info|warning|error)?

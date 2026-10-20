@@ -1,4 +1,6 @@
-#!/usr/bin/with-contenv bash
-cd /opt/scratcha
+#!/usr/bin/with-contenv bashio
+# Starts the ScratcHA bridge. SUPERVISOR_TOKEN comes from with-contenv.
+bashio::log.info "Starting ScratcHA"
+mkdir -p /share/scratcha/projects /share/scratcha/www /data/cache
+cd /opt/scratcha || exit 1
 exec node src/server.js
-

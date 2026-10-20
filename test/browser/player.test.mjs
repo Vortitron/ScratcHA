@@ -84,6 +84,8 @@ describe("packaged player", { skip }, () => {
 
 	test("lists the project", async () => {
 		const page = await browser.newPage();
+		const said = [];
+		await page.exposeFunction("scratchaSaid", (text) => said.push(text));
 		try {
 			await page.goto(`${bridge.url}/play/`);
 			assert.equal(await page.locator("ul.projects a").first().textContent(), "test");
@@ -119,6 +121,50 @@ describe("packaged player", { skip }, () => {
 			throw error;
 		} finally {
 			await page.close();
+		}
+	});
+});
+
+describe("demo project", { skip }, () => {
+	test("plays, reads the sensor and toggles the lamp on click", { timeout: 120000 }, async () => {
+		const demoDir = makeTempDir("demo-");
+		fs.copyFileSync(new URL("../../examples/ScratcHA demo.sb3", import.meta.url), path.join(demoDir, "ScratcHA demo.sb3"));
+		await ha.call("input_boolean", "turn_off", { entity_id: "input_boolean.kids_room_power" });
+		const bridge = new BridgeProcess({ options: { allowed_entities: ["light.kids_room", "sensor.room_temperature"], projects_dir: demoDir, access_token: ha.token, homeassistant_url: ha.url } });
+		await bridge.start();
+		const page = await browser.newPage();
+		const said = [];
+		await page.exposeFunction("scratchaSaid", (text) => said.push(text));
+		try {
+			await page.goto(`${bridge.url}/play/`);
+			await page.locator("ul.projects a", { hasText: "ScratcHA demo" }).click();
+			await page.waitForFunction(() => window.vm && window.vm.extensionManager.isExtensionLoaded("scratcha"), null, { timeout: 30000 });
+			await page.evaluate(() => {
+				window.vm.runtime.on("SAY", (target, type, text) => window.scratchaSaid(String(text)));
+				window.scaffolding.start();
+			});
+			await page.waitForFunction(() => {
+				const house = window.vm.runtime.getSpriteTargetByName("House");
+				const bubble = house && house.getCustomState("Scratch.looks");
+				return bubble && /Room temperature: \d/.test(bubble.text);
+			}, null, { timeout: 15000 });
+			await sleep(600);
+			await page.evaluate(() => {
+				const house = window.vm.runtime.getSpriteTargetByName("House");
+				window.vm.runtime.startHats("event_whenthisspriteclicked", null, house);
+			});
+			await waitUntil(async () => (await ha.state("light.kids_room")) === "on", 15000, "kids room light on");
+			await page.waitForFunction(() => {
+				const bubble = window.vm.runtime.getSpriteTargetByName("House").getCustomState("Scratch.looks");
+				return bubble && bubble.text === "The lamp is now on";
+			}, null, { timeout: 15000 });
+		} catch (error) {
+			error.message += `\nThe house said: ${JSON.stringify(said)}`;
+			throw error;
+		} finally {
+			await page.close();
+			await bridge.stop();
+			fs.rmSync(demoDir, { recursive: true, force: true });
 		}
 	});
 });

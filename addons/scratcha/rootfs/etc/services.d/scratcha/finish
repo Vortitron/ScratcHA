@@ -1,0 +1,8 @@
+#!/usr/bin/env bashio
+# Stops the add-on when the bridge exits with an error, so the Supervisor
+# can show it as stopped instead of looping.
+if [[ "${1}" -ne 0 ]] && [[ "${1}" -ne 256 ]]; then
+	bashio::log.warning "ScratcHA stopped with exit code ${1}"
+	echo "${1}" > /run/s6-linux-init-container-results/exitcode
+fi
+exec /run/s6/basedir/bin/halt

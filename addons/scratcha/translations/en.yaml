@@ -1,0 +1,89 @@
+configuration:
+  allowed_entities:
+    name: Allowed entities
+    description: >-
+      What the blocks may read and control. Exact IDs or patterns with *, for
+      example light.kids_room or light.*. Empty means nothing is allowed.
+  denied_entities:
+    name: Denied entities
+    description: >-
+      Never allowed, even if they match an allowed pattern. Put anything
+      dangerous here, such as a main power switch.
+  allowed_services:
+    name: Extra services
+    description: >-
+      Services beyond the built-in block services, for example
+      input_boolean.turn_on. Only work on allowed entities.
+  allowed_services_without_target:
+    name: Services with no entity
+    description: >-
+      Services that may be called without naming an entity, for example
+      notify.kids_tablet. Keep this short.
+  read_only:
+    name: Read-only
+    description: Refuse every service call. Reading still works.
+  protected_services:
+    name: Protected services
+    description: Services that need the PIN. Patterns with * work.
+  protected_entities:
+    name: Protected entities
+    description: Entities that need the PIN to control. Patterns with * work.
+  pin_code:
+    name: PIN
+    description: >-
+      The PIN for protected things. If something is protected and this is
+      empty, it is always refused.
+  rate_limit_calls:
+    name: Calls per window
+    description: Service calls allowed per device in each window. Default 10.
+  rate_limit_window_s:
+    name: Rate limit window (seconds)
+    description: Length of the rate limit window. Default 10.
+  min_interval_ms:
+    name: Minimum time between changes (ms)
+    description: >-
+      The shortest time between two changes to one entity, across all
+      devices. Stops toggle loops chattering a relay. Default 500.
+  cors_allow_origins:
+    name: Allowed web origins
+    description: >-
+      Other web sites that may call the bridge. "null" covers sandboxed
+      TurboWarp extensions. Add https://turbowarp.org for HTTPS mode.
+  allowed_hosts:
+    name: Allowed host names
+    description: >-
+      Extra names for this Home Assistant on your network, for example
+      ha.home.lan. IP addresses and homeassistant.local always work.
+  projects_dir:
+    name: Projects folder
+    description: Where .sb3 files for Play a project live. Default /share/scratcha/projects.
+  static_dir:
+    name: Custom files folder
+    description: Extra files served under /www/. Default /share/scratcha/www.
+  ssl:
+    name: HTTPS on the network port
+    description: >-
+      Serve the network port over HTTPS with the Home Assistant certificate.
+      Only useful with a real certificate for a name that works at home.
+  certfile:
+    name: Certificate file
+    description: File in /ssl. Default fullchain.pem.
+  keyfile:
+    name: Key file
+    description: File in /ssl. Default privkey.pem.
+  timeout_ms:
+    name: Home Assistant timeout (ms)
+    description: How long to wait for Home Assistant. Default 8000.
+  access_token:
+    name: Access token (advanced)
+    description: >-
+      Leave empty inside Home Assistant. Only for running the bridge
+      somewhere else, together with the Home Assistant URL.
+  homeassistant_url:
+    name: Home Assistant URL (advanced)
+    description: Used only with an access token. Default http://homeassistant:8123.
+  log_level:
+    name: Log level
+    description: How much to write to the add-on log.
+network:
+  8099/tcp: ScratcHA page and bridge on your home network. Leave empty to use only the Home Assistant panel.
