@@ -40,7 +40,7 @@ export function createBridge(options, deps = {}) {
 		WebSocketImpl: deps.WebSocket,
 		backoffMs: deps.backoffMs
 	});
-	const hub = new EventHub({ maxStreams: deps.maxStreams ?? 20, pingMs: deps.pingMs ?? 25000 });
+	const hub = new EventHub({ maxStreams: deps.maxStreams ?? 20, maxPerClient: deps.maxStreamsPerClient ?? 4, pingMs: deps.pingMs ?? 25000 });
 	const ingressAddresses = deps.ingressAddresses ?? defaultIngressAddresses;
 	const dataDir = deps.dataDir ?? env.SCRATCHA_DATA_DIR ?? "/data";
 	const editorDir = deps.editorDir ?? env.SCRATCHA_EDITOR_DIR ?? path.join(here, "..", "editor");
@@ -187,12 +187,14 @@ export function createBridge(options, deps = {}) {
 	}));
 
 	app.get("/bridge/events", wrap(async (req, res) => {
+		const clientId = clientIdOf(req);
+		policy.takeRead(clientId);
 		let filter = null;
 		if (typeof req.query.entities === "string" && req.query.entities) {
 			filter = new Set(req.query.entities.split(",").map((s) => s.trim()).filter((s) => entityIdShape.test(s)));
 		}
 		const initial = [["config", publicConfig()], ...[...core.mirror.values()].map((s) => ["state", s])];
-		hub.open(req, res, { filter, initial });
+		hub.open(req, res, { filter, initial, clientId });
 	}));
 
 	app.use("/bridge", (req, res, next) => {

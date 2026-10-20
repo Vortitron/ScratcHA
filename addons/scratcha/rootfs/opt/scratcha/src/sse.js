@@ -1,10 +1,14 @@
 import { bridgeError } from "./errors.js";
 
 // Server-Sent Events fan-out for /bridge/events.
+// maxStreams is for everyone. maxPerClient stops one device, or one web
+// page, from using them all up.
 export class EventHub {
-	constructor({ maxStreams = 20, pingMs = 25000 } = {}) {
+	constructor({ maxStreams = 20, maxPerClient = 4, pingMs = 25000 } = {}) {
 		this.maxStreams = maxStreams;
+		this.maxPerClient = maxPerClient;
 		this.clients = new Set();
+		this.perClient = new Map();
 		this.pinger = setInterval(() => this.ping(), pingMs);
 		this.pinger.unref?.();
 	}
@@ -14,7 +18,11 @@ export class EventHub {
 	}
 
 	// filter is null for "every allowed entity", or a Set of entity IDs.
-	open(req, res, { filter = null, initial = [] } = {}) {
+	open(req, res, { filter = null, initial = [], clientId = "unknown" } = {}) {
+		const mine = this.perClient.get(clientId) ?? 0;
+		if (mine >= this.maxPerClient) {
+			throw bridgeError("busy", 503, "Too many live connections from this device.");
+		}
 		if (this.clients.size >= this.maxStreams) {
 			throw bridgeError("busy", 503);
 		}
@@ -27,10 +35,21 @@ export class EventHub {
 		res.write("retry: 3000\n\n");
 		const client = { res, filter };
 		this.clients.add(client);
+		this.perClient.set(clientId, mine + 1);
 		for (const [event, data] of initial) {
 			this.write(client, event, data);
 		}
-		const done = () => this.clients.delete(client);
+		const done = () => {
+			if (!this.clients.delete(client)) {
+				return;
+			}
+			const left = (this.perClient.get(clientId) ?? 1) - 1;
+			if (left > 0) {
+				this.perClient.set(clientId, left);
+			} else {
+				this.perClient.delete(clientId);
+			}
+		};
 		req.on("close", done);
 		res.on("error", done);
 		return client;
@@ -61,5 +80,6 @@ export class EventHub {
 			client.res.end();
 		}
 		this.clients.clear();
+		this.perClient.clear();
 	}
 }

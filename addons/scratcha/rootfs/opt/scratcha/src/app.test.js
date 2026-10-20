@@ -401,6 +401,34 @@ test("SSE: headers, config and snapshot, live changes, filter", async () => {
 	fake.setState("light.kids_lamp", "off");
 });
 
+test("SSE: one device cannot use up every stream", async () => {
+	const b = await bridgeWith(safeOptions, { deps: { maxStreams: 3, maxStreamsPerClient: 2 } });
+	const controllers = [];
+	const open = (base, headers = {}) => {
+		const controller = new AbortController();
+		controllers.push(controller);
+		return fetch(`${base}/bridge/events`, { signal: controller.signal, headers });
+	};
+	try {
+		const a = await open(b.base);
+		const a2 = await open(b.base);
+		const a3 = await open(b.base);
+		assert.deepEqual([a.status, a2.status, a3.status], [200, 200, 503]);
+		assert.match((await a3.json()).message, /this device/);
+		const ingress = { "X-Ingress-Path": "/api/hassio_ingress/abc", "X-Forwarded-For": "10.0.0.7, 172.30.32.1" };
+		const other = await open(b.ingressBase, ingress);
+		assert.equal(other.status, 200);
+		controllers[0].abort();
+		await waitFor(() => b.bridge.hub.size === 2);
+		const again = await open(b.base);
+		assert.equal(again.status, 200);
+	} finally {
+		for (const c of controllers) {
+			c.abort();
+		}
+	}
+});
+
 test("SSE: ping and the stream limit", async () => {
 	const b = await bridgeWith(safeOptions, { deps: { maxStreams: 1, pingMs: 50 } });
 	const first = readEvents(`${b.base}/bridge/events`, (t) => t.includes(": ping"));

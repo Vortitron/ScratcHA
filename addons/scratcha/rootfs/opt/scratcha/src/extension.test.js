@@ -32,7 +32,8 @@ const loaded = [];
 
 before(async () => {
 	fake = await startFakeCore({ states });
-	bridge = await startBridge(options, { core: fake });
+	// Every loaded copy keeps its stream open, all from 127.0.0.1.
+	bridge = await startBridge(options, { core: fake, deps: { maxStreamsPerClient: 100 } });
 });
 
 after(async () => {
@@ -418,6 +419,11 @@ test("without EventSource it polls, and stale entries are fetched again", async 
 });
 
 test("a config event with new entities refreshes the palette", async () => {
+	// Every open copy refetches the list on a config event, all from one
+	// address. Close the earlier ones so the read limit is not the subject.
+	while (loaded.length) {
+		loaded.pop().stop();
+	}
 	const ext = await loadExtension();
 	await waitFor(() => ext.internals.state.eventsOpen);
 	const before = ext.refreshes;
