@@ -1,0 +1,59 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>ScratcHA status</title>
+	<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+	<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+	<main class="page">
+		<p><a href="./">Back to the kids' page</a></p>
+		<h1>ScratcHA status</h1>
+		<p class="lead">For grown-ups. What the bridge can reach, and what it will refuse.</p>
+
+		<div id="alerts"></div>
+
+		<section class="card">
+			<h2>Connection</h2>
+			<dl class="facts">
+				<dt>Home Assistant</dt><dd id="ha">...</dd>
+				<dt>Mode</dt><dd id="mode">...</dd>
+				<dt>Live updates</dt><dd id="live">...</dd>
+				<dt>Version</dt><dd id="version">...</dd>
+			</dl>
+		</section>
+
+		<section class="card">
+			<h2>Safety</h2>
+			<dl class="facts" id="safety"></dl>
+		</section>
+
+		<section class="card">
+			<h2>Allowed entities right now</h2>
+			<p>
+				<label for="pin">PIN for protected things</label>
+				<input id="pin" type="password" autocomplete="off" inputmode="numeric">
+			</p>
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>Entity</th><th>State</th><th>Test</th></tr></thead>
+					<tbody id="entities"><tr><td colspan="3">Loading...</td></tr></tbody>
+				</table>
+			</div>
+			<p id="result" role="status"></p>
+		</section>
+
+		<section class="card">
+			<h2>Using the blocks</h2>
+			<dl class="facts">
+				<dt>Editor</dt><dd id="editor">...</dd>
+				<dt>Extension URL</dt><dd><code id="extension-url"></code></dd>
+			</dl>
+			<p>On this address the editor and players load the extension for you. The extension URL is for HTTPS mode, where turbowarp.org can load it directly.</p>
+		</section>
+	</main>
+	<script type="module" src="assets/status.js"></script>
+</body>
+</html>

@@ -1,248 +1,339 @@
 import fs from "node:fs";
-import assert from "node:assert/strict";
+import fsp from "node:fs/promises";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import express from "express";
-import morgan from "morgan";
+import JSZip from "@turbowarp/jszip";
+import { createLogger } from "./logger.js";
+import { createPolicy } from "./policy.js";
+import { CoreClient, resolveCoreTarget } from "./core.js";
+import { EventHub } from "./sse.js";
+import { BridgeError, bridgeError } from "./errors.js";
+import { entityIdShape, maxBodyBytes } from "./validate.js";
+import { loadExtensionSource, renderExtension } from "./extension.js";
+import { Players, projectNameShape, maxProjectBytes } from "./player.js";
+import { bridgeUrlOf, clientIdOf, corsMiddleware, ingressPathOf, isHostAllowed } from "./http.js";
 
-export function createApp(config, deps = {}) {
-	const fetchImpl = deps.fetch ?? fetch;
+const here = path.dirname(fileURLToPath(import.meta.url));
+const packageInfo = JSON.parse(fs.readFileSync(path.join(here, "..", "package.json"), "utf8"));
+export const version = packageInfo.version;
+
+const publicDir = path.join(here, "..", "public");
+const defaultIngressAddresses = ["172.30.32.2"];
+const htmlEscapes = { "&": "&amp;", "<": "&lt;", ">": "&gt;", "\"": "&quot;", "'": "&#39;" };
+
+// Builds the bridge. Returns an Express app plus handler(listener), which
+// tags each request with the listener it arrived on (LAN or ingress).
+export function createBridge(options, deps = {}) {
+	const env = deps.env ?? process.env;
+	const logger = deps.logger ?? createLogger(options.log_level);
 	const now = deps.now ?? Date.now;
-	const logger = deps.logger ?? console;
+	const warnings = deps.warnings ?? [];
+	const policy = createPolicy(options, { now });
+	const target = deps.target ?? resolveCoreTarget(options, env);
+	const core = deps.core ?? new CoreClient({
+		target,
+		timeoutMs: options.timeout_ms,
+		isAllowed: policy.isEntityAllowed,
+		logger,
+		fetchImpl: deps.fetch,
+		WebSocketImpl: deps.WebSocket,
+		backoffMs: deps.backoffMs
+	});
+	const hub = new EventHub({ maxStreams: deps.maxStreams ?? 20, pingMs: deps.pingMs ?? 25000 });
+	const ingressAddresses = deps.ingressAddresses ?? defaultIngressAddresses;
+	const dataDir = deps.dataDir ?? env.SCRATCHA_DATA_DIR ?? "/data";
+	const editorDir = deps.editorDir ?? env.SCRATCHA_EDITOR_DIR ?? path.join(here, "..", "editor");
+	const extensionSource = deps.extensionSource ?? loadExtensionSource(deps.extensionPath);
+	const players = new Players({
+		projectsDir: options.projects_dir,
+		cacheDir: path.join(dataDir, "cache"),
+		extensionSource: () => renderExtension(extensionSource, "relative:../"),
+		logger
+	});
 
-	const baseUrl = (config.homeassistant_url ?? "").replace(/\/+$/, "");
-	const token = (config.access_token ?? "").trim();
-	const allowedEntities = new Set(config.allowed_entities ?? []);
-	const allowedServices = new Set(config.allowed_services ?? []);
-	const allowAllEntities = allowedEntities.size === 0;
-	const allowAllServices = allowedServices.size === 0;
-	const cacheSeconds = Number(config.cache_seconds ?? 0);
-	const corsAllowOrigin = (config.cors_allow_origin ?? "").trim();
-	const staticDir = config.static_dir;
-	const timeoutMs = Number(config.timeout_ms);
-	const protectedServices = new Set(config.protected_services ?? []);
-	const pinCode = (config.pin_code ?? "").trim();
+	const hasEditor = () => fs.existsSync(path.join(editorDir, "editor.html"));
 
-	assert(baseUrl, "homeassistant_url is required");
-	assert(token, "access_token is required. Create a scoped HA token for ScratcHA.");
+	function publicConfig() {
+		return {
+			version,
+			mode: target.mode,
+			ha: core.status,
+			events: "sse",
+			poll_ms: 2000,
+			timeout_ms: options.timeout_ms,
+			editor: hasEditor(),
+			ssl: options.ssl,
+			cors_allow_origins: options.cors_allow_origins,
+			cors_allow_any: options.cors_allow_origins.includes("*"),
+			...policy.summary(),
+			warnings
+		};
+	}
 
-	const cache = new Map();
+	function entityList(states) {
+		return states
+			.map((s) => ({
+				entity_id: s.entity_id,
+				name: String(s.attributes?.friendly_name ?? s.entity_id),
+				domain: s.entity_id.split(".")[0]
+			}))
+			.sort((a, b) => a.name.localeCompare(b.name));
+	}
+
+	core.on("state", (state) => hub.broadcast("state", state));
+	core.on("entities", () => hub.broadcast("config", publicConfig()));
+	core.on("status", (status) => logger.info(`Home Assistant connection: ${status}`));
 
 	const app = express();
 	app.disable("x-powered-by");
-	app.use(express.json({ limit: "256kb" }));
-	app.use(morgan("combined"));
+	app.set("etag", false);
+	app.set("strict routing", true);
 
-	if (corsAllowOrigin) {
-		app.use((req, res, next) => {
-			res.setHeader("Access-Control-Allow-Origin", corsAllowOrigin === "*" ? "*" : corsAllowOrigin);
-			res.setHeader("Access-Control-Allow-Methods", "GET,POST,OPTIONS");
-			res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization,x-scratcha-pin");
-			if (req.method === "OPTIONS") {
-				return res.sendStatus(204);
+	// Listener checks: ingress only from the Supervisor, LAN only for safe Host names.
+	app.use((req, res, next) => {
+		const meta = req.scratcha ?? { kind: "lan", tls: false };
+		req.scratcha = meta;
+		if (meta.kind === "ingress") {
+			const remote = String(req.socket.remoteAddress ?? "").replace(/^::ffff:/, "");
+			if (!ingressAddresses.includes(remote)) {
+				res.status(403).type("text/plain").send("Ingress port is only for the Supervisor.");
+				return;
 			}
-			next();
-		});
-	}
+			meta.ingress = true;
+			meta.ingressPath = ingressPathOf(req);
+			meta.trusted = Boolean(meta.ingressPath);
+		} else if (!isHostAllowed(req.headers.host, options.allowed_hosts)) {
+			logger.warn(`Refused request with Host "${String(req.headers.host ?? "").slice(0, 80)}". Add it to allowed_hosts if it is yours.`);
+			res.status(421).type("text/plain").send("This host name is not allowed. Add it to allowed_hosts in the ScratcHA options.");
+			return;
+		}
+		res.setHeader("X-Content-Type-Options", "nosniff");
+		res.setHeader("Referrer-Policy", "no-referrer");
+		next();
+	});
 
-	if (fs.existsSync(staticDir)) {
-		app.use(express.static(staticDir, { fallthrough: true }));
-	}
+	app.use((req, res, next) => {
+		const started = now();
+		res.on("finish", () => {
+			logger.debug(`${req.method} ${req.path} ${res.statusCode} ${now() - started}ms`);
+		});
+		next();
+	});
+
+	const cors = corsMiddleware(options.cors_allow_origins);
+	app.use("/bridge", cors);
+	app.use("/extension", cors);
 
 	app.get("/bridge/health", (req, res) => {
-		res.json({ status: "ok", timestamp: now() });
+		res.json({ status: "ok", ha: core.status, mode: target.mode, version });
 	});
 
 	app.get("/bridge/config", (req, res) => {
-		res.json({
-			base_url: baseUrl,
-			allow_all_entities: allowAllEntities,
-			allow_all_services: allowAllServices,
-			allowed_entities: Array.from(allowedEntities),
-			allowed_services: Array.from(allowedServices),
-			cache_seconds: cacheSeconds,
-			static_dir: fs.existsSync(staticDir) ? staticDir : null,
-			timeout_ms: timeoutMs
-		});
+		res.json(publicConfig());
 	});
 
-	app.get("/bridge/states", async (req, res, next) => {
-		try {
-			const cached = readCache(cache, cacheSeconds, "states", now);
-			if (cached) {
-				return res.json(cached);
-			}
-			const states = await fetchStates(baseUrl, token, timeoutMs, fetchImpl);
-			const filtered = filterEntities(states, allowAllEntities, allowedEntities);
-			writeCache(cache, cacheSeconds, "states", filtered, now);
-			res.json(filtered);
-		} catch (error) {
-			next(error);
+	app.get("/bridge/entities", wrap(async (req, res) => {
+		policy.takeRead(clientIdOf(req));
+		res.json(entityList(await core.getStates()));
+	}));
+
+	app.get("/bridge/states", wrap(async (req, res) => {
+		policy.takeRead(clientIdOf(req));
+		res.json(await core.getStates());
+	}));
+
+	app.get("/bridge/states/:entityId", wrap(async (req, res) => {
+		policy.takeRead(clientIdOf(req));
+		const entityId = req.params.entityId;
+		policy.assertReadable(entityId);
+		res.json(await core.getState(entityId));
+	}));
+
+	const jsonBody = express.json({ limit: maxBodyBytes, strict: true });
+	app.post("/bridge/services/:domain/:service", (req, res, next) => {
+		if (!req.is("application/json")) {
+			next(bridgeError("bad_request", 415, "Send service data as application/json."));
+			return;
 		}
-	});
-
-	app.get("/bridge/states/:entityId", async (req, res, next) => {
+		next();
+	}, jsonBody, wrap(async (req, res) => {
+		const client = clientIdOf(req);
+		const { domain, service } = req.params;
+		const body = req.body ?? {};
+		let checked;
 		try {
-			const entityId = decodeURIComponent(req.params.entityId);
-			assertEntityAllowed(entityId, allowAllEntities, allowedEntities);
-			const cached = readCache(cache, cacheSeconds, `state:${entityId}`, now);
-			if (cached) {
-				return res.json(cached);
-			}
-			const state = await fetchState(baseUrl, token, timeoutMs, fetchImpl, entityId);
-			writeCache(cache, cacheSeconds, `state:${entityId}`, state, now);
-			res.json(state);
+			checked = policy.checkServiceCall({ domain, service, body, client, pin: req.headers["x-scratcha-pin"] });
 		} catch (error) {
-			next(error);
-		}
-	});
-
-	app.post("/bridge/services/:domain/:service", async (req, res, next) => {
-		try {
-			const domain = req.params.domain;
-			const service = req.params.service;
-			const serviceName = `${domain}.${service}`;
-			assertServiceAllowed(serviceName, allowAllServices, allowedServices);
-			enforcePin(serviceName, protectedServices, pinCode, req);
-			const body = req.body ?? {};
-			const response = await haRequest(baseUrl, token, timeoutMs, fetchImpl, `/api/services/${domain}/${service}`, {
-				method: "POST",
-				body: JSON.stringify(body)
-			});
-			const payload = await response.json();
-			res.json(payload);
-		} catch (error) {
-			next(error);
-		}
-	});
-
-	app.use((err, req, res, next) => {
-		logger.error("[scratcha] error", err);
-		const status = err.status || 500;
-		res.status(status).json({
-			error: err.message ?? "Unexpected error",
-			status
-		});
-	});
-
-	return app;
-}
-
-function filterEntities(states, allowAllEntities, allowedEntities) {
-	if (allowAllEntities) {
-		return states;
-	}
-	return states.filter((item) => allowedEntities.has(item.entity_id));
-}
-
-function assertEntityAllowed(entityId, allowAllEntities, allowedEntities) {
-	if (allowAllEntities) {
-		return;
-	}
-	if (!allowedEntities.has(entityId)) {
-		const error = new Error(`Entity ${entityId} is not allowed`);
-		error.status = 403;
-		throw error;
-	}
-}
-
-function assertServiceAllowed(serviceName, allowAllServices, allowedServices) {
-	if (allowAllServices) {
-		return;
-	}
-	if (!allowedServices.has(serviceName)) {
-		const error = new Error(`Service ${serviceName} is not allowed`);
-		error.status = 403;
-		throw error;
-	}
-}
-
-function enforcePin(serviceName, protectedServices, pinCode, req) {
-	if (!pinCode || protectedServices.size === 0) {
-		return;
-	}
-	if (!protectedServices.has(serviceName)) {
-		return;
-	}
-	const headerPin = (req.headers["x-scratcha-pin"] ?? "").toString();
-	if (headerPin !== pinCode) {
-		const error = new Error(`Service ${serviceName} requires a valid PIN`);
-		error.status = 403;
-		throw error;
-	}
-}
-
-async function fetchStates(baseUrl, token, timeoutMs, fetchImpl) {
-	const response = await haRequest(baseUrl, token, timeoutMs, fetchImpl, "/api/states");
-	return response.json();
-}
-
-async function fetchState(baseUrl, token, timeoutMs, fetchImpl, entityId) {
-	const response = await haRequest(
-		baseUrl,
-		token,
-		timeoutMs,
-		fetchImpl,
-		`/api/states/${encodeURIComponent(entityId)}`
-	);
-	return response.json();
-}
-
-async function haRequest(baseUrl, token, timeoutMs, fetchImpl, pathname, init = {}) {
-	const target = new URL(pathname, baseUrl).toString();
-	const controller = new AbortController();
-	const timer = setTimeout(() => controller.abort(), timeoutMs);
-	const headers = {
-		Accept: "application/json",
-		"Content-Type": "application/json",
-		Authorization: `Bearer ${token}`,
-		...(init.headers ?? {})
-	};
-
-	try {
-		const response = await fetchImpl(target, {
-			...init,
-			headers,
-			signal: controller.signal
-		});
-		if (!response.ok) {
-			const text = await response.text();
-			const error = new Error(`HA request failed ${response.status}: ${text}`);
-			error.status = response.status;
+			logger.info(`Refused ${domain}.${service} from ${client}: ${error.code ?? error.message}`);
 			throw error;
 		}
-		return response;
-	} catch (error) {
-		if (error.name === "AbortError") {
-			error.status = 504;
-			error.message = `HA request timed out after ${timeoutMs}ms`;
+		const changed = await core.callService(domain, service, body);
+		logger.info(`Called ${checked.name} on ${checked.entities.join(", ") || "(no target)"} for ${client}`);
+		res.json({ ok: true, changed });
+	}));
+
+	app.get("/bridge/events", wrap(async (req, res) => {
+		let filter = null;
+		if (typeof req.query.entities === "string" && req.query.entities) {
+			filter = new Set(req.query.entities.split(",").map((s) => s.trim()).filter((s) => entityIdShape.test(s)));
 		}
-		throw error;
-	} finally {
-		clearTimeout(timer);
-	}
-}
+		const initial = [["config", publicConfig()], ...[...core.mirror.values()].map((s) => ["state", s])];
+		hub.open(req, res, { filter, initial });
+	}));
 
-function readCache(cache, cacheSeconds, key, now) {
-	if (cacheSeconds <= 0) {
-		return null;
-	}
-	const hit = cache.get(key);
-	if (!hit) {
-		return null;
-	}
-	if (now() > hit.expiresAt) {
-		cache.delete(key);
-		return null;
-	}
-	return hit.value;
-}
-
-function writeCache(cache, cacheSeconds, key, value, now) {
-	if (cacheSeconds <= 0) {
-		return;
-	}
-	cache.set(key, {
-		value,
-		expiresAt: now() + cacheSeconds * 1000
+	app.use("/bridge", (req, res, next) => {
+		next(bridgeError("not_found", 404));
 	});
+
+	app.get("/extension/scratcha.js", (req, res) => {
+		res.setHeader("Content-Type", "text/javascript; charset=utf-8");
+		res.setHeader("Cache-Control", "no-cache");
+		res.send(renderExtension(extensionSource, bridgeUrlOf(req)));
+	});
+
+	app.get("/", (req, res) => sendPage(res, "index.html"));
+	app.get("/status", (req, res) => sendPage(res, "status.html"));
+	app.use("/assets", express.static(publicDir, { index: false, maxAge: 0 }));
+
+	app.get("/editor", (req, res) => res.redirect(302, "editor/"));
+	app.use("/editor", (req, res, next) => {
+		if (!hasEditor()) {
+			res.status(404).type("text/plain").send("The editor is not part of this build. Use Play a project instead.");
+			return;
+		}
+		next();
+	}, express.static(editorDir, { index: "editor.html", maxAge: 0 }));
+
+	app.get("/play", (req, res) => res.redirect(302, "play/"));
+	app.get("/play/", wrap(async (req, res) => {
+		const list = await players.list();
+		const items = list.map((p) => `<li><a href="${escapeHtml(encodeURIComponent(p.name))}.html">${escapeHtml(p.name)}</a></li>`).join("\n");
+		res.type("html").send(playListPage(items));
+	}));
+	app.get("/play/list.json", wrap(async (req, res) => {
+		res.json(await players.list());
+	}));
+	app.get("/play/:file", wrap(async (req, res) => {
+		const file = req.params.file;
+		if (!file.endsWith(".html")) {
+			throw bridgeError("not_found", 404);
+		}
+		const html = await players.render(`${file.slice(0, -5)}.sb3`);
+		res.setHeader("Cache-Control", "no-cache");
+		res.type("html").send(html);
+	}));
+
+	app.post("/projects", (req, res, next) => {
+		if (!req.scratcha.trusted) {
+			next(bridgeError("not_allowed", 403, "Uploads only work from the ScratcHA panel in Home Assistant."));
+			return;
+		}
+		next();
+	}, express.raw({ type: "*/*", limit: maxProjectBytes }), wrap(async (req, res) => {
+		const name = String(req.query.name ?? "");
+		if (!projectNameShape.test(name)) {
+			throw bridgeError("bad_request", 400, "Name must be letters, numbers, spaces, - or _, ending in .sb3.");
+		}
+		if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+			throw bridgeError("bad_request", 400, "The file is empty.");
+		}
+		try {
+			const zip = await JSZip.loadAsync(req.body);
+			if (!zip.file("project.json")) {
+				throw new Error("no project.json");
+			}
+		} catch {
+			throw bridgeError("bad_request", 400, "That is not a valid .sb3 file.");
+		}
+		await fsp.mkdir(options.projects_dir, { recursive: true });
+		await fsp.writeFile(path.join(options.projects_dir, name), req.body);
+		logger.info(`Saved project ${name}`);
+		res.json({ ok: true, name });
+	}));
+
+	app.use("/www", express.static(options.static_dir, { maxAge: 0 }));
+
+	app.use((req, res) => {
+		res.status(404).type("text/plain").send("Not found.");
+	});
+
+	// Errors become { error, message }. Core bodies and stack traces stay in the log.
+	app.use((err, req, res, next) => {
+		let error = err;
+		if (!(error instanceof BridgeError)) {
+			if (err.type === "entity.too.large") {
+				error = bridgeError("bad_request", 413, "That is too big.");
+			} else if (err.type === "entity.parse.failed") {
+				error = bridgeError("bad_request", 400, "That is not valid JSON.");
+			} else {
+				logger.error(`Unexpected error on ${req.method} ${req.path}: ${err.stack ?? err.message}`);
+				error = bridgeError("ha_error", 500, "Something went wrong in the bridge.");
+			}
+		}
+		if (res.headersSent) {
+			res.end();
+			return;
+		}
+		res.status(error.status ?? 500).json({ error: error.code, message: error.message });
+	});
+
+	function handler(listener = { kind: "lan", tls: false }) {
+		return (req, res) => {
+			req.scratcha = { ...listener };
+			app(req, res);
+		};
+	}
+
+	return {
+		app,
+		handler,
+		core,
+		hub,
+		policy,
+		players,
+		publicConfig,
+		start() {
+			core.start();
+		},
+		close() {
+			core.stop();
+			hub.close();
+		}
+	};
 }
 
+function wrap(fn) {
+	return (req, res, next) => {
+		Promise.resolve(fn(req, res, next)).catch(next);
+	};
+}
+
+function sendPage(res, name) {
+	res.setHeader("Cache-Control", "no-cache");
+	res.sendFile(path.join(publicDir, name));
+}
+
+function escapeHtml(text) {
+	return String(text).replace(/[&<>"']/g, (c) => htmlEscapes[c]);
+}
+
+function playListPage(items) {
+	return `<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Play a project</title>
+<link rel="stylesheet" href="../assets/app.css">
+</head>
+<body>
+<main class="page">
+<p><a href="../">Back</a></p>
+<h1>Play a project</h1>
+${items ? `<ul class="projects">${items}</ul>` : "<p>No projects yet. A grown-up can put .sb3 files in the projects folder.</p>"}
+</main>
+</body>
+</html>
+`;
+}

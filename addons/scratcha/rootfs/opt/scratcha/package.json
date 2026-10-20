@@ -1,16 +1,23 @@
 {
 	"name": "scratcha-bridge",
-	"version": "0.0.1",
-	"description": "TurboWarp/Scratch bridge for Home Assistant with a local proxy and static hosting.",
+	"version": "0.1.0",
+	"description": "Bridge between TurboWarp projects and Home Assistant, with safety rules for kids.",
 	"type": "module",
 	"private": true,
 	"scripts": {
 		"start": "node src/server.js",
-		"test": "node --test src/app.test.js"
+		"test": "node --test --test-concurrency=1 \"src/**/*.test.js\""
 	},
 	"dependencies": {
-		"express": "^4.19.2",
-		"morgan": "^1.10.0"
-	}
+		"@turbowarp/jszip": "3.12.0",
+		"@turbowarp/packager": "3.13.0",
+		"express": "4.22.3"
+	},
+	"devDependencies": {
+		"ws": "8.22.0"
+	},
+	"engines": {
+		"node": ">=22"
+	},
+	"license": "MIT"
 }
-
