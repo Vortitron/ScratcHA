@@ -107,7 +107,7 @@ for (const mode of ["token", "supervisor"]) {
 			}
 			const list = await (await bridge.get("/bridge/states")).json();
 			const ids = list.map((s) => s.entity_id).sort();
-			assert.deepEqual(ids, ["input_boolean.kids_lamp_power", "input_boolean.lamp", "input_number.temp", "light.kids_lamp", "scene.party", "sensor.room_temperature"]);
+			assert.deepEqual(ids, ["input_boolean.kids_lamp_power", "input_boolean.kids_room_power", "input_boolean.lamp", "input_number.temp", "light.kids_lamp", "scene.party", "sensor.room_temperature"]);
 		});
 
 		test("turns on the lamp in Home Assistant", async () => {
