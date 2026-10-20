@@ -58,7 +58,7 @@ describe("HTTPS mode", { skip: hasOpenssl ? false : "no openssl" }, () => {
 		assert.equal(health.status, "ok");
 		const ext = await get(`https://127.0.0.1:${bridge.port}/extension/scratcha.js`, { host: `ha.test.lan:${bridge.port}`, origin: "https://turbowarp.org" });
 		assert.equal(ext.status, 200);
-		assert.equal(ext.body.split("\n")[0], `(function (Scratch, bridgeSetting = "https://ha.test.lan:${bridge.port}") {`);
+		assert.equal(ext.body.split("\n")[0], `(function (Scratch, bridgeSetting = "https://ha.test.lan:${bridge.port}", knownSetting = "__SCRATCHA_KNOWN_ENTITIES__") {`);
 		assert.equal(ext.headers["access-control-allow-origin"], "https://turbowarp.org");
 		assert.match(bridge.output, /LAN \(HTTPS\)/);
 	});
