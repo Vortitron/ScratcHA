@@ -1,0 +1,35 @@
+--- a/src/containers/tw-security-manager.jsx
++++ b/src/containers/tw-security-manager.jsx
+@@ -19,6 +19,22 @@
+ };
+ 
+ /**
++ * ScratcHA: the add-on serves this editor and the Home blocks from the same
++ * origin. Trust only that one file, so it loads without a sandbox. A
++ * sandboxed copy could not send the Home Assistant ingress cookie.
++ * @param {string} url URL as a string.
++ * @returns {boolean} True if this is the ScratcHA extension from this origin
++ */
++const isScratcHAExtension = url => {
++    try {
++        const parsed = new URL(url);
++        return parsed.origin === location.origin && parsed.pathname.endsWith('/extension/scratcha.js');
++    } catch (e) {
++        return false;
++    }
++};
++
++/**
+  * Trusted extensions are loaded automatically and without a sandbox.
+  * @param {string} url URL as a string.
+  * @returns {boolean} True if the extension can is trusted
+@@ -30,6 +46,9 @@
+     // For development.
+     url.startsWith('http://localhost:8000/') ||
+ 
++    // ScratcHA Home blocks from the add-on that serves this editor.
++    isScratcHAExtension(url) ||
++
+     extensionsTrustedByUser.has(url)
+ );
+ 

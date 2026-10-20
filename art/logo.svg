@@ -1,0 +1,6 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="250" height="100" viewBox="0 0 250 100">
+	<rect x="4" y="10" width="80" height="80" rx="18" fill="#18bcf2"/>
+	<path d="M44 20 14 46h9v34h42V46h9z" fill="#ffffff"/>
+	<path d="M28 54h11l3 4h4l3-4h12v16H28z" fill="#ffab19" stroke="#cf8b17" stroke-width="2" stroke-linejoin="round"/>
+	<text x="94" y="62" font-family="Helvetica, Arial, sans-serif" font-size="32" font-weight="700" fill="#0b87b3">Scratc<tspan fill="#18bcf2">HA</tspan></text>
+</svg>

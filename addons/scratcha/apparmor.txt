@@ -1,0 +1,44 @@
+#include <tunables/global>
+
+# ScratcHA AppArmor profile. Based on the example in the Home Assistant app
+# developer docs. Not yet checked on a real Supervisor, so it is broad on
+# files and only limits capabilities and network families. Tighten later.
+profile scratcha flags=(attach_disconnected,mediate_deleted) {
+  #include <abstractions/base>
+
+  # Files. Node reads /opt/scratcha, writes /data and /share/scratcha,
+  # reads /ssl.
+  file,
+
+  # Network: the Supervisor API, Core WebSocket and the two listeners.
+  network inet,
+  network inet6,
+  network unix,
+
+  # Signals from and to s6-overlay.
+  signal (send) set=(kill,term,int,hup,cont),
+  signal (receive),
+
+  # s6-overlay
+  /init ix,
+  /bin/** ix,
+  /usr/bin/** ix,
+  /run/{s6,s6-rc*,service}/** ix,
+  /package/** ix,
+  /command/** ix,
+  /etc/services.d/** rwix,
+  /etc/cont-init.d/** rwix,
+  /etc/cont-finish.d/** rwix,
+  /run/{,**} rwk,
+  /dev/tty rw,
+
+  # Bashio
+  /usr/lib/bashio/** ix,
+  /tmp/** rwk,
+
+  # Add-on data and mapped folders
+  /data/** rw,
+  /share/scratcha/** rw,
+  /ssl/** r,
+  /opt/scratcha/** r,
+}

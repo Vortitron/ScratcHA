@@ -1,0 +1,4 @@
+rootfs/opt/scratcha/node_modules
+rootfs/opt/scratcha/editor
+**/*.test.js
+rootfs/opt/scratcha/src/test-helpers.js

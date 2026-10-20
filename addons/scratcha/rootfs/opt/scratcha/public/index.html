@@ -1,0 +1,58 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1">
+	<title>ScratcHA</title>
+	<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+	<link rel="stylesheet" href="assets/app.css">
+</head>
+<body>
+	<main class="page">
+		<h1>ScratcHA</h1>
+		<p class="lead">Make Scratch projects that talk to your home.</p>
+
+		<p class="notice bad" id="nothing-allowed" hidden>Nothing is allowed yet. Ask a grown-up to add things to the ScratcHA allowed list.</p>
+		<p class="notice" id="offline" hidden>Can't reach home right now. Projects still open, but the home blocks will wait.</p>
+
+		<div class="big-buttons">
+			<a class="big-button" id="make" href="editor/editor.html" hidden>Make a project<small>Opens the editor with the Home blocks ready.</small></a>
+			<a class="big-button" href="play/">Play a project<small>Run projects saved on this home.</small></a>
+			<button class="big-button" id="show-things" type="button" aria-expanded="false">What can I control?<small>See the things on your list.</small></button>
+		</div>
+
+		<section class="card" id="things" hidden>
+			<h2>Things on your list</h2>
+			<div class="table-wrap">
+				<table>
+					<thead><tr><th>Name</th><th>ID for blocks</th><th>Now</th></tr></thead>
+					<tbody id="things-body"><tr><td colspan="3">Loading...</td></tr></tbody>
+				</table>
+			</div>
+		</section>
+
+		<section class="card" id="upload" hidden>
+			<h2>Save to ScratcHA</h2>
+			<p>Pick an <code>.sb3</code> file you saved. It will show up under Play a project.</p>
+			<p><input type="file" id="upload-file" accept=".sb3"> <span id="upload-result" role="status"></span></p>
+		</section>
+
+		<section class="card" id="no-editor" hidden>
+			<h2>No editor in this build</h2>
+			<p>You can still make projects on turbowarp.org or in TurboWarp Desktop.</p>
+			<ol>
+				<li><a href="extension/scratcha.js?download=1" download="scratcha.js" id="download-blocks">Download the Home blocks</a>. The file knows the things on your list.</li>
+				<li>In TurboWarp, choose <strong>Add extension</strong>, then <strong>Custom Extension</strong>, then the <strong>Files</strong> tab, and pick <code>scratcha.js</code>.</li>
+				<li>The blocks say "Can't reach home." there. That is fine.</li>
+				<li>Save the project as an <code>.sb3</code> file. A grown-up adds it with Save to ScratcHA, and it works under Play a project.</li>
+			</ol>
+		</section>
+
+		<footer>
+			<a href="status">Grown-ups: status and safety</a>
+			<span id="editor-source"></span>
+		</footer>
+	</main>
+	<script type="module" src="assets/home.js"></script>
+</body>
+</html>

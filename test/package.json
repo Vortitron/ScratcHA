@@ -1,0 +1,19 @@
+{
+	"name": "scratcha-tests",
+	"version": "0.1.0",
+	"private": true,
+	"type": "module",
+	"description": "End-to-end and browser tests for ScratcHA. Needs a Python venv with homeassistant (bin/hass).",
+	"scripts": {
+		"e2e": "node --test --test-concurrency=1 --test-timeout=600000 e2e/*.test.mjs",
+		"browser": "node --test --test-concurrency=1 --test-timeout=600000 browser/*.test.mjs",
+		"test": "npm run e2e && npm run browser"
+	},
+	"devDependencies": {
+		"@turbowarp/jszip": "3.12.0",
+		"playwright-core": "1.61.0"
+	},
+	"engines": {
+		"node": ">=22"
+	}
+}

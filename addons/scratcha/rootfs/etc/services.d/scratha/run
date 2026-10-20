@@ -1,4 +1,0 @@
-#!/usr/bin/with-contenv bash
-cd /opt/scratcha
-exec node src/server.js
-

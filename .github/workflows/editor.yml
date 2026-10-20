@@ -1,0 +1,73 @@
+name: Editor build
+
+# Builds the TurboWarp editor that the add-on can serve. TurboWarp has no
+# prebuilt web bundle, so we build TurboWarp/scratch-gui at the pinned commit
+# in editor/SCRATCH_GUI_COMMIT with the patches in editor/patches.
+# The output is GPL-3.0, like the source.
+
+on:
+  workflow_dispatch:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - id: pin
+        run: echo "sha=$(tr -d '[:space:]' < editor/SCRATCH_GUI_COMMIT)" >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v4
+        with:
+          repository: TurboWarp/scratch-gui
+          ref: ${{ steps.pin.outputs.sha }}
+          path: scratch-gui
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: scratch-gui/.nvmrc
+          cache: npm
+          cache-dependency-path: scratch-gui/package-lock.json
+      - name: Apply ScratcHA patches
+        working-directory: scratch-gui
+        run: |
+          for patch in ../editor/patches/*.patch; do
+            git apply --verbose "$patch"
+          done
+      - name: Build
+        working-directory: scratch-gui
+        env:
+          NODE_ENV: production
+          # ROOT stays unset, so paths are relative and the build works
+          # under /editor/ and under the ingress prefix.
+          ROUTING_STYLE: filehash
+        run: |
+          npm ci
+          npm run build
+          test -f build/editor.html
+      - name: Record the source for the GPL notice
+        env:
+          GUI_SHA: ${{ steps.pin.outputs.sha }}
+          REPO: ${{ github.repository }}
+          REPO_SHA: ${{ github.sha }}
+        run: |
+          {
+            printf '{"commit":"%s",' "$GUI_SHA"
+            printf '"source":"https://github.com/TurboWarp/scratch-gui/tree/%s",' "$GUI_SHA"
+            printf '"patches":"https://github.com/%s/tree/%s/editor/patches"}\n' "$REPO" "$REPO_SHA"
+          } > scratch-gui/build/scratcha-source.json
+      - name: Package
+        run: |
+          name="turbowarp-editor-${{ steps.pin.outputs.sha }}.tar.gz"
+          tar -czf "$name" -C scratch-gui/build .
+          sha256sum "$name" | tee "$name.sha256"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: turbowarp-editor
+          path: turbowarp-editor-*
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: turbowarp-editor-*
