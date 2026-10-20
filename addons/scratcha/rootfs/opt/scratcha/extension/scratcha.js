@@ -109,7 +109,8 @@
 		if (body !== undefined) {
 			headers["Content-Type"] = "application/json";
 		}
-		if (state.pin) {
+		// Only calls need the PIN. Leaving it off reads avoids a CORS preflight.
+		if (state.pin && method === "POST") {
 			headers["X-ScratcHA-PIN"] = state.pin;
 		}
 		let response;

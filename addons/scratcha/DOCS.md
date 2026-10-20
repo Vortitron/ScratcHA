@@ -32,6 +32,7 @@ Rules:
 - An entry is an exact entity ID or a pattern with `*`. `light.*` means every light. Be careful with patterns.
 - `denied_entities` always wins. Put anything dangerous there, such as a main power switch, even if no pattern seems to match it.
 - Every call must name its entities. Calls that target "all", an area, a device, a floor or a label are refused.
+- Allowing a group, script, scene or automation lets the blocks run everything it controls. Check what it does first.
 - The blocks use a small set of services: `homeassistant.turn_on`, `turn_off` and `toggle`, `light.turn_on`, `scene.turn_on`, `script.turn_on`, `button.press` and `input_button.press`. These work for allowed entities without listing them. Any other service must be in `allowed_services`.
 
 Then open the **Status** page (see below) and check what is allowed.
