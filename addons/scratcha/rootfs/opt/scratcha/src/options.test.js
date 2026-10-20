@@ -5,11 +5,15 @@ import path from "node:path";
 import { test } from "node:test";
 import { defaults, loadOptions, normalizeOptions } from "./options.js";
 
-test("defaults are safe: nothing allowed, CORS only null", () => {
+test("defaults are safe: nothing allowed, no other web sites", () => {
 	const { options, warnings } = normalizeOptions({});
 	assert.deepEqual(options.allowed_entities, []);
 	assert.deepEqual(options.allowed_services, []);
-	assert.deepEqual(options.cors_allow_origins, ["null"]);
+	assert.deepEqual(options.cors_allow_origins, []);
+	assert.ok(!warnings.some((w) => /"null"/.test(w)));
+	const optIn = normalizeOptions({ cors_allow_origins: ["null"] });
+	assert.deepEqual(optIn.options.cors_allow_origins, ["null"]);
+	assert.ok(optIn.warnings.some((w) => /contains "null"/.test(w)));
 	assert.equal(options.read_only, false);
 	assert.equal(options.rate_limit_calls, 10);
 	assert.equal(options.min_interval_ms, 500);

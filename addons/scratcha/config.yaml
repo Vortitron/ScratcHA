@@ -30,8 +30,7 @@ options:
   read_only: false
   protected_services: []
   protected_entities: []
-  cors_allow_origins:
-    - "null"
+  cors_allow_origins: []
   allowed_hosts: []
   ssl: false
 schema:

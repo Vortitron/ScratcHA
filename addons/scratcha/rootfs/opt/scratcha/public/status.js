@@ -115,6 +115,8 @@ function renderConfig(health) {
 	}
 	if (config.cors_allow_any) {
 		alert("cors_allow_origins contains \"*\". Any web page can call the bridge.", true);
+	} else if (config.cors_allow_null) {
+		alert("cors_allow_origins contains \"null\". Any web page can make that origin and call the bridge. Remove it unless you need it.", true);
 	}
 	if (config.pin_missing) {
 		alert("Some things are protected but no PIN is set, so they are always refused.", true);

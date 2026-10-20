@@ -34,7 +34,7 @@ export const defaults = Object.freeze({
 	rate_limit_calls: 10,
 	rate_limit_window_s: 10,
 	min_interval_ms: 500,
-	cors_allow_origins: ["null"],
+	cors_allow_origins: [],
 	allowed_hosts: [],
 	projects_dir: "/share/scratcha/projects",
 	static_dir: "/share/scratcha/www",
@@ -107,6 +107,9 @@ export function normalizeOptions(raw = {}) {
 
 	options.log_level = logLevels.includes(raw.log_level) ? raw.log_level : "info";
 
+	if (options.cors_allow_origins.includes("null")) {
+		warnings.push("cors_allow_origins contains \"null\". Any web page can make that origin, so any site someone at home opens could read and switch your allowed things. Remove it unless you need it.");
+	}
 	if (options.allowed_entities.length === 0) {
 		warnings.push("allowed_entities is empty, so nothing can be read or controlled yet.");
 	}

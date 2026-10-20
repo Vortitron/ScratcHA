@@ -191,7 +191,7 @@ All JSON. Errors are `{ "error": "<code>", "message": "<text>" }` with codes fro
 ### 3.4 CORS
 
 - Same-origin use (editor, player, status page) needs no CORS.
-- For `/bridge/*` and `/extension/*` the bridge reflects the request `Origin` only if it is in `cors_allow_origins`. Default `["null"]`, which covers sandboxed extension iframes (they send `Origin: null`). HTTPS mode adds `https://turbowarp.org`.
+- For `/bridge/*` and `/extension/*` the bridge reflects the request `Origin` only if it is in `cors_allow_origins`. Default empty. The add-on's own pages, editor and players are same-origin and need no CORS. `null` (sent by sandboxed iframes, `data:` URLs and local files) is opt-in only, because any web page can make it. The status page warns while it is listed. HTTPS mode adds `https://turbowarp.org` and loads the extension unsandboxed.
 - `*` is accepted only if the parent types it, and the status page warns.
 - Allowed headers: `Content-Type`, `X-ScratcHA-PIN`. Methods: `GET`, `POST`, `OPTIONS`. No credentials.
 - Service calls require `Content-Type: application/json`, which forces a preflight, so a random web page cannot fire a "simple" cross-origin POST.
@@ -296,7 +296,7 @@ Options schema:
 | `rate_limit_calls` | `int(1,100)?` | 10 |
 | `rate_limit_window_s` | `int(1,600)?` | 10 |
 | `min_interval_ms` | `int(0,10000)?` | 500 |
-| `cors_allow_origins` | `[str]` | `["null"]` |
+| `cors_allow_origins` | `[str]` | `[]` |
 | `allowed_hosts` | `[str]` | `[]` |
 | `projects_dir` | `str?` | `/share/scratcha/projects` |
 | `static_dir` | `str?` | `/share/scratcha/www` |

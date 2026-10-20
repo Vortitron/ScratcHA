@@ -78,6 +78,7 @@ export function createBridge(options, deps = {}) {
 			ssl: options.ssl,
 			cors_allow_origins: options.cors_allow_origins,
 			cors_allow_any: options.cors_allow_origins.includes("*"),
+			cors_allow_null: options.cors_allow_origins.includes("null"),
 			...policy.summary(),
 			warnings
 		};

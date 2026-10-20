@@ -260,8 +260,24 @@ test("Host check blocks rebinding names on the LAN port", async () => {
 	}
 });
 
-test("CORS: null by default, listed origins reflected, others not", async () => {
+test("CORS: no origins by default, so a sandboxed page cannot call the bridge", async () => {
 	const b = await bridgeWith();
+	const nullOrigin = await rawGet(b.base, "/bridge/states", { origin: "null" });
+	assert.equal(nullOrigin.headers["access-control-allow-origin"], undefined);
+	const pre = await fetch(`${b.base}/bridge/services/homeassistant/toggle`, {
+		method: "OPTIONS",
+		headers: { Origin: "null", "Access-Control-Request-Method": "POST", "Access-Control-Request-Headers": "content-type" }
+	});
+	assert.equal(pre.headers.get("access-control-allow-origin"), null);
+	assert.equal(pre.headers.get("access-control-allow-headers"), null);
+	const config = await (await fetch(`${b.base}/bridge/config`)).json();
+	assert.deepEqual(config.cors_allow_origins, []);
+	assert.equal(config.cors_allow_null, false);
+});
+
+test("CORS: null when opted in, listed origins reflected, others not", async () => {
+	const b = await bridgeWith({ ...safeOptions, cors_allow_origins: ["null"] });
+	assert.equal((await (await fetch(`${b.base}/bridge/config`)).json()).cors_allow_null, true);
 	const nullOrigin = await rawGet(b.base, "/bridge/health", { origin: "null" });
 	assert.equal(nullOrigin.headers["access-control-allow-origin"], "null");
 	const other = await rawGet(b.base, "/bridge/health", { origin: "https://evil.example.com" });

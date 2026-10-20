@@ -47,8 +47,9 @@ configuration:
   cors_allow_origins:
     name: Allowed web origins
     description: >-
-      Other web sites that may call the bridge. "null" covers sandboxed
-      TurboWarp extensions. Add https://turbowarp.org for HTTPS mode.
+      Other web sites that may call the bridge. Empty by default. Add
+      https://turbowarp.org for HTTPS mode. Avoid "null": any web page
+      can make that origin.
   allowed_hosts:
     name: Allowed host names
     description: >-
