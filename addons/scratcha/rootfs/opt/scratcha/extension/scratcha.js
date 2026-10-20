@@ -3,7 +3,6 @@
 	// The bridge writes its own address into the line above when it serves
 	// this file. Works sandboxed and unsandboxed. Blocks never throw: a
 	// failure sets "last home error" and the block finishes.
-	"use strict";
 
 	const EXTENSION_ID = "scratcha";
 	const FRESH_MS = 5000;

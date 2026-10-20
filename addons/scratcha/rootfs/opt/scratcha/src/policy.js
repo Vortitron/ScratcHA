@@ -32,7 +32,7 @@ export function createPolicy(options, deps = {}) {
 	const protectEntity = compileList(options.protected_entities);
 	const pin = options.pin_code ?? "";
 
-	const burst = Math.max(1, Math.min(5, options.rate_limit_calls));
+	const burst = Math.max(1, Math.ceil(options.rate_limit_calls / 2));
 	const callBuckets = new TokenBuckets({
 		capacity: burst,
 		refillPerMs: options.rate_limit_calls / (options.rate_limit_window_s * 1000),
