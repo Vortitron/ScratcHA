@@ -86,6 +86,13 @@ template:
             target:
               entity_id: input_boolean.kids_room_power
 
+group:
+  kids:
+    name: Kids things
+    entities:
+      - input_boolean.lamp
+      - input_boolean.house_main_power
+
 scene:
   - name: Party
     entities:

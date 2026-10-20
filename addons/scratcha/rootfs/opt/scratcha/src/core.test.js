@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { CoreClient, resolveCoreTarget } from "./core.js";
+import { CoreClient, resolveCoreTarget, slimState } from "./core.js";
 import { compileList } from "./glob.js";
 import { makeState, startFakeCore, testToken, waitFor } from "./test-helpers.js";
 
@@ -206,4 +206,25 @@ test("heartbeat drops a Core that stops answering pings", async () => {
 		core.stop();
 		await fake.close();
 	}
+});
+
+test("slimState drops attributes that point at entities off the list", () => {
+	const allowed = (id) => ["group.kids", "input_boolean.lamp", "person.kid"].includes(id);
+	const group = slimState(makeState("group.kids", "on", {
+		friendly_name: "light.not_a_ref",
+		entity_id: ["input_boolean.lamp", "switch.house_main_power"],
+		source: "switch.house_main_power",
+		version: "1.2",
+		mixed: [1, "input_boolean.lamp", "switch.x"]
+	}), allowed);
+	assert.deepEqual(group.attributes, {
+		friendly_name: "light.not_a_ref",
+		entity_id: ["input_boolean.lamp"],
+		version: "1.2",
+		mixed: [1, "input_boolean.lamp"]
+	});
+	const person = slimState(makeState("person.kid", "home", { friendly_name: "Kid", latitude: 51.5, longitude: -0.1, gps_accuracy: 5 }), allowed);
+	assert.deepEqual(person.attributes, { friendly_name: "Kid" });
+	const light = slimState(makeState("light.a", "on", { brightness: 128, rgb_color: [1, 2, 3] }), allowed);
+	assert.deepEqual(light.attributes, { brightness: 128, rgb_color: [1, 2, 3] });
 });

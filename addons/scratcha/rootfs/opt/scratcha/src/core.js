@@ -31,11 +31,35 @@ function toWs(url) {
 	return url.replace(/^http/, "ws");
 }
 
-export function slimState(state) {
+// Looks like an entity ID. The domain part has no digits, so values such
+// as "1.2" are left alone.
+const entityRef = /^[a-z][a-z_]*\.[a-z0-9_]+$/;
+const locationDomains = ["person", "device_tracker"];
+const locationKeys = ["latitude", "longitude", "gps_accuracy", "altitude", "course", "speed", "vertical_accuracy"];
+
+// Copies the parts of a state the blocks need. Attributes that name
+// entities off the allowed list are dropped, for example group members,
+// and so is where a person or tracker is.
+export function slimState(state, isAllowed = () => true) {
+	const hidesLocation = locationDomains.includes(String(state.entity_id).split(".")[0]);
+	const attributes = {};
+	for (const [key, value] of Object.entries(state.attributes ?? {})) {
+		if (hidesLocation && locationKeys.includes(key)) {
+			continue;
+		}
+		if (typeof value === "string" && key !== "friendly_name" && entityRef.test(value) && !isAllowed(value)) {
+			continue;
+		}
+		if (Array.isArray(value) && value.some((v) => typeof v === "string" && entityRef.test(v))) {
+			attributes[key] = value.filter((v) => typeof v !== "string" || !entityRef.test(v) || isAllowed(v));
+			continue;
+		}
+		attributes[key] = value;
+	}
 	return {
 		entity_id: state.entity_id,
 		state: state.state,
-		attributes: state.attributes ?? {},
+		attributes,
 		last_changed: state.last_changed,
 		last_updated: state.last_updated
 	};
@@ -221,7 +245,7 @@ export class CoreClient extends EventEmitter {
 		this.mirror.clear();
 		for (const state of states) {
 			if (state && this.isAllowed(state.entity_id)) {
-				this.mirror.set(state.entity_id, slimState(state));
+				this.mirror.set(state.entity_id, slimState(state, this.isAllowed));
 			}
 		}
 		for (const state of this.mirror.values()) {
@@ -245,7 +269,7 @@ export class CoreClient extends EventEmitter {
 			this.emit("entities");
 			return;
 		}
-		const state = slimState(data.new_state);
+		const state = slimState(data.new_state, this.isAllowed);
 		this.mirror.set(entityId, state);
 		this.emit("state", state);
 		if (isNew) {
@@ -258,7 +282,7 @@ export class CoreClient extends EventEmitter {
 			return [...this.mirror.values()];
 		}
 		const states = await this.rest("GET", "/states");
-		return Array.isArray(states) ? states.filter((s) => s && this.isAllowed(s.entity_id)).map(slimState) : [];
+		return Array.isArray(states) ? states.filter((s) => s && this.isAllowed(s.entity_id)).map((s) => slimState(s, this.isAllowed)) : [];
 	}
 
 	async getState(entityId) {
@@ -269,12 +293,12 @@ export class CoreClient extends EventEmitter {
 			}
 			return state;
 		}
-		return slimState(await this.rest("GET", `/states/${encodeURIComponent(entityId)}`));
+		return slimState(await this.rest("GET", `/states/${encodeURIComponent(entityId)}`), this.isAllowed);
 	}
 
 	async callService(domain, service, data) {
 		const changed = await this.rest("POST", `/services/${domain}/${service}`, data);
-		return Array.isArray(changed) ? changed.filter((s) => s && this.isAllowed(s.entity_id)).map(slimState) : [];
+		return Array.isArray(changed) ? changed.filter((s) => s && this.isAllowed(s.entity_id)).map((s) => slimState(s, this.isAllowed)) : [];
 	}
 
 	async rest(method, path, body) {

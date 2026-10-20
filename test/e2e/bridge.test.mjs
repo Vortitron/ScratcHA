@@ -8,7 +8,7 @@ const hass = findHass();
 const skip = hass ? false : "no hass binary (set SCRATCHA_HASS)";
 
 const safeOptions = {
-	allowed_entities: ["input_boolean.*", "light.kids_lamp", "sensor.room_temperature", "input_number.temp", "scene.party"],
+	allowed_entities: ["input_boolean.*", "light.kids_lamp", "sensor.room_temperature", "input_number.temp", "scene.party", "group.kids"],
 	denied_entities: ["input_boolean.house_main_power"],
 	protected_entities: ["scene.party"],
 	pin_code: "2468",
@@ -107,7 +107,7 @@ for (const mode of ["token", "supervisor"]) {
 			}
 			const list = await (await bridge.get("/bridge/states")).json();
 			const ids = list.map((s) => s.entity_id).sort();
-			assert.deepEqual(ids, ["input_boolean.kids_lamp_power", "input_boolean.kids_room_power", "input_boolean.lamp", "input_number.temp", "light.kids_lamp", "scene.party", "sensor.room_temperature"]);
+			assert.deepEqual(ids, ["group.kids", "input_boolean.kids_lamp_power", "input_boolean.kids_room_power", "input_boolean.lamp", "input_number.temp", "light.kids_lamp", "scene.party", "sensor.room_temperature"]);
 		});
 
 		test("turns on the lamp in Home Assistant", async () => {
@@ -141,6 +141,27 @@ for (const mode of ["token", "supervisor"]) {
 				assert.equal(res.status, 403);
 				assert.equal((await res.json()).error, "not_allowed");
 			}
+		});
+
+		test("entities named only inside target are refused, and do not block the next call", async () => {
+			const before = await ha.state("input_boolean.lamp");
+			const res = await bridge.post("/bridge/services/homeassistant/toggle", { target: { entity_id: "input_boolean.lamp" } });
+			assert.equal(res.status, 400);
+			assert.equal((await res.json()).error, "bad_request");
+			await sleep(300);
+			assert.equal(await ha.state("input_boolean.lamp"), before);
+			const real = await bridge.post("/bridge/services/homeassistant/toggle", { entity_id: "input_boolean.lamp" });
+			assert.equal(real.status, 200, await real.clone().text());
+			await waitUntil(async () => (await ha.state("input_boolean.lamp")) !== before, 5000, "lamp toggled");
+			await sleep(600);
+		});
+
+		test("a group shows only its allowed members", async () => {
+			const res = await bridge.get("/bridge/states/group.kids");
+			assert.equal(res.status, 200);
+			const body = await res.json();
+			assert.deepEqual(body.attributes.entity_id, ["input_boolean.lamp"]);
+			assert.ok(!JSON.stringify(await (await bridge.get("/bridge/states")).json()).includes("house_main_power"));
 		});
 
 		test("the PIN protects the party scene", async () => {
