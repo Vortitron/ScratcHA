@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 const here = path.dirname(fileURLToPath(import.meta.url));
 export const defaultExtensionPath = path.join(here, "..", "extension", "scratcha.js");
 const placeholder = "\"__SCRATCHA_BRIDGE_URL__\"";
+const knownPlaceholder = "\"__SCRATCHA_KNOWN_ENTITIES__\"";
 
 export function loadExtensionSource(file = defaultExtensionPath) {
 	const source = fs.readFileSync(file, "utf8");
@@ -17,10 +18,17 @@ export function loadExtensionSource(file = defaultExtensionPath) {
 
 // Writes the bridge URL into the extension. JSON.stringify keeps any odd
 // characters inside the string literal, and "<" is escaped so the result is
-// also safe inside an inline script.
-export function renderExtension(source, bridgeUrl) {
+// also safe inside an inline script. A list of { entity_id, name } entries,
+// when given, is written in too, so menus work where home cannot be reached.
+export function renderExtension(source, bridgeUrl, knownEntities = null) {
 	const literal = JSON.stringify(String(bridgeUrl)).replace(/</g, "\\u003c");
-	return source.replace(placeholder, literal);
+	let out = source.replace(placeholder, () => literal);
+	if (Array.isArray(knownEntities)) {
+		const list = knownEntities.map((e) => ({ entity_id: String(e.entity_id), name: String(e.name ?? e.entity_id) }));
+		const listLiteral = JSON.stringify(list).replace(/</g, "\\u003c");
+		out = out.replace(knownPlaceholder, () => listLiteral);
+	}
+	return out;
 }
 
 export function hashOf(text) {

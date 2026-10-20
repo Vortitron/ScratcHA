@@ -98,7 +98,7 @@ class FakeEventSource {
 }
 
 // Loads the extension into a fresh context with a fake Scratch global.
-async function loadExtension({ bridgeUrl = bridge.base, unsandboxed = true, eventSource = true } = {}) {
+async function loadExtension({ bridgeUrl = bridge.base, unsandboxed = true, eventSource = true, known = null } = {}) {
 	const hats = [];
 	const timers = new Set();
 	const sources = [];
@@ -146,7 +146,7 @@ async function loadExtension({ bridgeUrl = bridge.base, unsandboxed = true, even
 		},
 		clearInterval: (t) => clearInterval(t)
 	});
-	vm.runInContext(renderExtension(source, bridgeUrl), context);
+	vm.runInContext(renderExtension(source, bridgeUrl, known), context);
 	await waitFor(() => registered !== null, 4000);
 	const ext = {
 		instance: registered,
@@ -206,13 +206,49 @@ test("menus come from the bridge and only list allowed entities", async () => {
 
 test("an unreachable bridge still registers, with empty menus and friendly errors", async () => {
 	const ext = await loadExtension({ bridgeUrl: "http://127.0.0.1:9", eventSource: false });
-	assert.deepEqual(plain(ext.instance.entitiesMenu()), [{ text: "(nothing allowed yet)", value: "" }]);
+	assert.deepEqual(plain(ext.instance.entitiesMenu()), [{ text: "(can't reach home)", value: "" }]);
 	assert.equal(await ext.instance.stateOf({ ENTITY: "light.kids_lamp" }), "");
 	assert.equal(ext.instance.lastError(), "Can't reach home.");
 	assert.equal(await ext.instance.isOn({ ENTITY: "light.kids_lamp" }), false);
 	await ext.instance.toggle({ SWITCHABLE: "input_boolean.lamp" });
 	assert.equal(ext.instance.lastError(), "Can't reach home.");
 	assert.equal(await ext.instance.connected(), false);
+});
+
+test("a downloaded copy keeps its menus when home cannot be reached", async () => {
+	const known = [{ entity_id: "light.kids_lamp", name: "Kids lamp" }, { entity_id: "sensor.room_temperature", name: "Room temperature" }];
+	const ext = await loadExtension({ bridgeUrl: "http://127.0.0.1:9", eventSource: false, unsandboxed: false, known });
+	const info = ext.instance.getInfo();
+	assert.deepEqual(plain(info.menus.entityFields.items), [{ text: "Kids lamp", value: "light.kids_lamp" }, { text: "Room temperature", value: "sensor.room_temperature" }]);
+	assert.deepEqual(plain(info.menus.lights.items), [{ text: "Kids lamp", value: "light.kids_lamp" }]);
+	assert.deepEqual(plain(info.menus.runnables.items), [{ text: "(nothing allowed yet)", value: "" }]);
+	await ext.instance.toggle({ SWITCHABLE: "light.kids_lamp" });
+	assert.equal(ext.instance.lastError(), "Can't reach home.");
+	const empty = await loadExtension({ bridgeUrl: "http://127.0.0.1:9", eventSource: false, known: [] });
+	assert.deepEqual(plain(empty.instance.entitiesMenu()), [{ text: "(nothing allowed yet)", value: "" }]);
+});
+
+test("common kid mistakes get a message that says what to do", async () => {
+	const ext = await loadExtension();
+	const i = ext.instance;
+	fake.calls.length = 0;
+	// The friendly name works as well as the ID.
+	assert.equal(await i.stateOf({ ENTITY: "Room temperature" }), "21.5");
+	await i.turnOnOff({ SWITCHABLE: "lamp", ONOFF: "on" });
+	assert.equal(i.lastError(), "");
+	assert.deepEqual(fake.calls.map((c) => c.data.entity_id), ["input_boolean.lamp"]);
+	await i.turnOnOff({ SWITCHABLE: "Not a thing", ONOFF: "on" });
+	assert.equal(i.lastError(), "Use the ID from \"What can I control?\", like light.kids_room.");
+	await i.turnOnOff({ SWITCHABLE: "", ONOFF: "on" });
+	assert.equal(i.lastError(), "Pick a thing from the menu first.");
+	assert.equal(await i.stateOf({ ENTITY: "" }), "");
+	assert.equal(i.lastError(), "Pick a thing from the menu first.");
+	await i.toggle({ SWITCHABLE: "sensor.room_temperature" });
+	assert.equal(i.lastError(), "That can only be read, not switched.");
+	assert.equal(fake.calls.length, 1);
+	await i.setBridge({ URL: "homeassistant.local" });
+	assert.equal(i.lastError(), "Start the address with http:// or https://");
+	fake.setState("input_boolean.lamp", "off", { friendly_name: "Lamp" });
 });
 
 test("reporters and booleans", async () => {
@@ -275,7 +311,7 @@ test("run picks the service by domain and the PIN block unlocks it", async () =>
 	assert.equal(i.lastError(), "That needs a grown-up's PIN.");
 	i.enterPin({ PIN: "1111" });
 	await i.run({ RUNNABLE: "scene.party" });
-	assert.equal(i.lastError(), "That needs a grown-up's PIN.");
+	assert.equal(i.lastError(), "That PIN is not right.");
 	i.enterPin({ PIN: "2468" });
 	await i.run({ RUNNABLE: "scene.party" });
 	assert.equal(i.lastError(), "");
@@ -399,5 +435,7 @@ test("relative bridge setting resolves against the page, placeholder falls back"
 
 test("rendered extension escapes odd bridge URLs", () => {
 	const out = renderExtension(source, "http://x/</script>\"");
-	assert.ok(out.startsWith("(function (Scratch, bridgeSetting = \"http://x/\\u003c/script>\\\"\") {"));
+	assert.ok(out.startsWith("(function (Scratch, bridgeSetting = \"http://x/\\u003c/script>\\\"\", knownSetting"));
+	const dollars = renderExtension(source, "http://x/$&$'", [{ entity_id: "light.a", name: "$& </script>" }]);
+	assert.ok(dollars.startsWith("(function (Scratch, bridgeSetting = \"http://x/$&$'\", knownSetting = [{\"entity_id\":\"light.a\",\"name\":\"$& \\u003c/script>\"}]) {"), dollars.split("\n")[0]);
 });

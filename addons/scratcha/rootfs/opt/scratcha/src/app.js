@@ -198,11 +198,27 @@ export function createBridge(options, deps = {}) {
 		next(bridgeError("not_found", 404));
 	});
 
-	app.get("/extension/scratcha.js", (req, res) => {
+	app.get("/extension/scratcha.js", wrap(async (req, res) => {
 		res.setHeader("Content-Type", "text/javascript; charset=utf-8");
 		res.setHeader("Cache-Control", "no-cache");
-		res.send(renderExtension(extensionSource, bridgeUrlOf(req)));
-	});
+		if (req.query.download === undefined) {
+			res.send(renderExtension(extensionSource, bridgeUrlOf(req)));
+			return;
+		}
+		// A copy to load from a file in turbowarp.org or TurboWarp Desktop.
+		// It holds the allowed list, so the menus work there even though the
+		// blocks cannot reach home. An ingress path means nothing outside the
+		// panel, so that copy falls back to homeassistant.local.
+		policy.takeRead(clientIdOf(req));
+		let known = null;
+		try {
+			known = entityList(await core.getStates());
+		} catch (error) {
+			logger.warn(`Download without the allowed list: ${error.code ?? error.message}`);
+		}
+		res.setHeader("Content-Disposition", "attachment; filename=\"scratcha.js\"");
+		res.send(renderExtension(extensionSource, req.scratcha.ingress ? "" : bridgeUrlOf(req), known));
+	}));
 
 	app.get("/", (req, res) => sendPage(res, "index.html"));
 	app.get("/status", (req, res) => sendPage(res, "status.html"));

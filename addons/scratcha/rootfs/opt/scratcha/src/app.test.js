@@ -287,23 +287,36 @@ test("CORS: turbowarp.org when listed, and star when the parent types it", async
 	assert.equal((await (await fetch(`${star.base}/bridge/config`)).json()).cors_allow_any, true);
 });
 
+test("the download copy holds the allowed list and a usable address", async () => {
+	const b = await bridgeWith();
+	const lan = await rawGet(b.base, "/extension/scratcha.js?download=1", { host: "192.168.1.2:8099" });
+	assert.equal(lan.status, 200);
+	assert.match(lan.headers["content-disposition"], /attachment; filename="scratcha.js"/);
+	const first = lan.body.split("\n")[0];
+	assert.ok(first.startsWith("(function (Scratch, bridgeSetting = \"http://192.168.1.2:8099\", knownSetting = ["), first);
+	assert.match(first, /\{"entity_id":"light.kids_lamp","name":"Kids lamp"\}/);
+	assert.doesNotMatch(lan.body, /house_main_power|switch\.secret/);
+	const ingress = await rawGet(b.ingressBase, "/extension/scratcha.js?download=1", { "x-ingress-path": "/api/hassio_ingress/AbC_123-x" });
+	assert.ok(ingress.body.startsWith("(function (Scratch, bridgeSetting = \"\", knownSetting = ["), ingress.body.split("\n")[0]);
+});
+
 test("extension URL is written in: plain, ingress and HTTPS", async () => {
 	const b = await bridgeWith();
 	const plain = await rawGet(b.base, "/extension/scratcha.js", { host: "homeassistant.local:8099" });
 	assert.equal(plain.headers["content-type"], "text/javascript; charset=utf-8");
 	assert.equal(plain.headers["cache-control"], "no-cache");
-	assert.equal(plain.body.split("\n")[0], "(function (Scratch, bridgeSetting = \"http://homeassistant.local:8099\") {");
+	assert.equal(plain.body.split("\n")[0], "(function (Scratch, bridgeSetting = \"http://homeassistant.local:8099\", knownSetting = \"__SCRATCHA_KNOWN_ENTITIES__\") {");
 	const ingress = await rawGet(b.ingressBase, "/extension/scratcha.js", { "x-ingress-path": "/api/hassio_ingress/AbC_123-x" });
-	assert.equal(ingress.body.split("\n")[0], "(function (Scratch, bridgeSetting = \"/api/hassio_ingress/AbC_123-x\") {");
+	assert.equal(ingress.body.split("\n")[0], "(function (Scratch, bridgeSetting = \"/api/hassio_ingress/AbC_123-x\", knownSetting = \"__SCRATCHA_KNOWN_ENTITIES__\") {");
 	const oddPath = await rawGet(b.ingressBase, "/extension/scratcha.js", { "x-ingress-path": "/api/hassio_ingress/x\"y" });
-	assert.equal(oddPath.body.split("\n")[0], "(function (Scratch, bridgeSetting = \"\") {");
+	assert.equal(oddPath.body.split("\n")[0], "(function (Scratch, bridgeSetting = \"\", knownSetting = \"__SCRATCHA_KNOWN_ENTITIES__\") {");
 	const tls = http.createServer(b.bridge.handler({ kind: "lan", tls: true }));
 	await new Promise((r) => tls.listen(0, "127.0.0.1", r));
 	try {
 		const res = await rawGet(`http://127.0.0.1:${tls.address().port}`, "/extension/scratcha.js", { host: "ha.local.example:8099" });
 		assert.equal(res.status, 421);
 		const ok = await rawGet(`http://127.0.0.1:${tls.address().port}`, "/extension/scratcha.js", { host: "192.168.1.2:8099" });
-		assert.equal(ok.body.split("\n")[0], "(function (Scratch, bridgeSetting = \"https://192.168.1.2:8099\") {");
+		assert.equal(ok.body.split("\n")[0], "(function (Scratch, bridgeSetting = \"https://192.168.1.2:8099\", knownSetting = \"__SCRATCHA_KNOWN_ENTITIES__\") {");
 	} finally {
 		tls.closeAllConnections();
 		await new Promise((r) => tls.close(r));

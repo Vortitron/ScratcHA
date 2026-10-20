@@ -1,8 +1,10 @@
-(function (Scratch, bridgeSetting = "__SCRATCHA_BRIDGE_URL__") {
+(function (Scratch, bridgeSetting = "__SCRATCHA_BRIDGE_URL__", knownSetting = "__SCRATCHA_KNOWN_ENTITIES__") {
 	// ScratcHA: Home Assistant blocks for TurboWarp.
 	// The bridge writes its own address into the line above when it serves
-	// this file. Works sandboxed and unsandboxed. Blocks never throw: a
-	// failure sets "last home error" and the block finishes.
+	// this file. A downloaded copy also gets the allowed list, so the menus
+	// work in an editor that cannot reach home. Works sandboxed and
+	// unsandboxed. Blocks never throw: a failure sets "last home error" and
+	// the block finishes.
 
 	const EXTENSION_ID = "scratcha";
 	const FRESH_MS = 5000;
@@ -14,6 +16,9 @@
 
 	const SWITCHABLE_DOMAINS = ["light", "switch", "fan", "input_boolean", "cover", "media_player", "climate", "siren"];
 	const RUNNABLE_DOMAINS = ["scene", "script", "button", "input_button"];
+	// Things that can only be read. Turning them on or off does nothing.
+	const READ_ONLY_DOMAINS = ["sensor", "binary_sensor", "weather", "sun", "person", "device_tracker", "zone", "event"];
+	const ENTITY_ID = /^[a-z0-9_]+\.[a-z0-9_]+$/;
 	const ON_STATES = ["on", "open", "opening", "home", "playing", "heat", "cool", "heat_cool", "auto", "dry", "fan_only", "unlocked", "active", "true"];
 	const RUN_SERVICES = {
 		scene: "scene.turn_on",
@@ -26,9 +31,14 @@
 		not_allowed: "That is not on your list.",
 		read_only: "Look, don't touch: ScratcHA is read-only.",
 		pin_required: "That needs a grown-up's PIN.",
-		pin_wrong: "That needs a grown-up's PIN.",
-		pin_locked: "That needs a grown-up's PIN.",
+		pin_wrong: "That PIN is not right.",
+		pin_locked: "Too many wrong PINs. Wait a few minutes.",
 		rate_limited: "Slow down a bit.",
+		bad_request: "Use the ID from \"What can I control?\", like light.kids_room.",
+		not_found: "Home does not know that thing.",
+		no_entity: "Pick a thing from the menu first.",
+		cannot_switch: "That can only be read, not switched.",
+		bad_address: "Start the address with http:// or https://",
 		ha_unavailable: "Can't reach home.",
 		network: "Can't reach home.",
 		timeout: "Can't reach home.",
@@ -47,7 +57,8 @@
 	const state = {
 		bridge: resolveBridge(bridgeSetting),
 		config: null,
-		entities: [],
+		entities: knownEntities(knownSetting),
+		entitiesLoaded: false,
 		mirror: new Map(),
 		misses: new Map(),
 		changedAt: new Map(),
@@ -81,6 +92,15 @@
 			}
 		}
 		return raw.replace(/\/+$/, "");
+	}
+
+	// The allowed list a downloaded copy was made with, if any.
+	function knownEntities(raw) {
+		if (!Array.isArray(raw)) {
+			return [];
+		}
+		return raw.filter((e) => e && typeof e.entity_id === "string" && ENTITY_ID.test(e.entity_id))
+			.map((e) => ({ entity_id: e.entity_id, name: String(e.name || e.entity_id), domain: domainOf(e.entity_id) }));
 	}
 
 	function timeoutMs() {
@@ -265,6 +285,7 @@
 		}
 		const before = JSON.stringify(state.entities);
 		state.entities = list.filter((e) => e && typeof e.entity_id === "string");
+		state.entitiesLoaded = true;
 		if (before !== JSON.stringify(state.entities) && unsandboxed && Scratch.vm && Scratch.vm.extensionManager) {
 			try {
 				Scratch.vm.extensionManager.refreshBlocks();
@@ -275,7 +296,11 @@
 	}
 
 	async function readState(entityId) {
-		const id = String(entityId === undefined || entityId === null ? "" : entityId).trim();
+		const id = entityArg(entityId);
+		if (!id) {
+			fail({ code: "no_entity", message: "No entity picked" });
+			return null;
+		}
 		const hit = state.mirror.get(id);
 		if (hit && (state.eventsOpen || state.pollTimer || Date.now() - hit.at < FRESH_MS)) {
 			return hit.value;
@@ -313,8 +338,39 @@
 		}
 	}
 
+	// An entity ID, or a friendly name from the allowed list, which is
+	// turned into its ID. Kids often type the name they can see.
 	function entityArg(value) {
-		return String(value === undefined || value === null ? "" : value).trim();
+		const text = String(value === undefined || value === null ? "" : value).trim();
+		if (!text || ENTITY_ID.test(text)) {
+			return text;
+		}
+		const lower = text.toLowerCase();
+		const known = state.entities.find((e) => String(e.name).toLowerCase() === lower || e.entity_id === lower);
+		return known ? known.entity_id : text;
+	}
+
+	// Checks an entity for the on, off and toggle blocks. Returns the ID, or
+	// "" after setting the error.
+	function switchableArg(value) {
+		const id = entityArg(value);
+		if (!id) {
+			fail({ code: "no_entity", message: "No entity picked" });
+			return "";
+		}
+		if (READ_ONLY_DOMAINS.indexOf(domainOf(id)) !== -1) {
+			fail({ code: "cannot_switch", message: id + " can only be read" });
+			return "";
+		}
+		return id;
+	}
+
+	function targetArg(value) {
+		const id = entityArg(value);
+		if (!id) {
+			fail({ code: "no_entity", message: "No entity picked" });
+		}
+		return id;
 	}
 
 	function domainOf(entityId) {
@@ -345,7 +401,10 @@
 
 	function menuFrom(list) {
 		if (list.length === 0) {
-			return [{ text: "(nothing allowed yet)", value: "" }];
+			// Without the list from home, an empty menu says nothing about
+			// what is allowed. Do not send a grown-up to the wrong fix.
+			const loaded = state.entitiesLoaded || Array.isArray(knownSetting);
+			return [{ text: loaded ? "(nothing allowed yet)" : "(can't reach home)", value: "" }];
 		}
 		return list.map((e) => ({ text: e.name || e.entity_id, value: e.entity_id }));
 	}
@@ -475,24 +534,40 @@
 		}
 
 		async turnOnOff(args) {
+			const id = switchableArg(args.SWITCHABLE);
+			if (!id) {
+				return;
+			}
 			const service = String(args.ONOFF).trim().toLowerCase() === "off" ? "homeassistant.turn_off" : "homeassistant.turn_on";
-			await callService(service, { entity_id: entityArg(args.SWITCHABLE) });
+			await callService(service, { entity_id: id });
 		}
 
 		async toggle(args) {
-			await callService("homeassistant.toggle", { entity_id: entityArg(args.SWITCHABLE) });
+			const id = switchableArg(args.SWITCHABLE);
+			if (id) {
+				await callService("homeassistant.toggle", { entity_id: id });
+			}
 		}
 
 		async setBrightness(args) {
-			await callService("light.turn_on", { entity_id: entityArg(args.LIGHT), brightness_pct: clampPercent(args.PERCENT) });
+			const id = targetArg(args.LIGHT);
+			if (id) {
+				await callService("light.turn_on", { entity_id: id, brightness_pct: clampPercent(args.PERCENT) });
+			}
 		}
 
 		async setColour(args) {
-			await callService("light.turn_on", { entity_id: entityArg(args.LIGHT), rgb_color: hexToRgb(args.COLOUR) });
+			const id = targetArg(args.LIGHT);
+			if (id) {
+				await callService("light.turn_on", { entity_id: id, rgb_color: hexToRgb(args.COLOUR) });
+			}
 		}
 
 		async run(args) {
-			const id = entityArg(args.RUNNABLE);
+			const id = targetArg(args.RUNNABLE);
+			if (!id) {
+				return;
+			}
 			const service = RUN_SERVICES[domainOf(id)];
 			if (!service) {
 				fail({ code: "not_allowed", message: id + " is not a scene, script or button" });
@@ -562,7 +637,7 @@
 		async setBridge(args) {
 			const url = String(args.URL).trim();
 			if (!/^https?:\/\/[^\s]+$/.test(url)) {
-				fail({ code: "other", message: "Home address must start with http:// or https://" });
+				fail({ code: "bad_address", message: "Home address must start with http:// or https://" });
 				return;
 			}
 			state.bridge = url.replace(/\/+$/, "");
