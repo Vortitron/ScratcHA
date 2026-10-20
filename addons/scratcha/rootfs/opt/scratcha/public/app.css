@@ -32,6 +32,10 @@
 	box-sizing: border-box;
 }
 
+[hidden] {
+	display: none !important;
+}
+
 body {
 	margin: 0;
 	background: var(--bg);
@@ -124,10 +128,6 @@ h2 {
 	background: var(--bad-bg);
 	color: var(--bad-text);
 	font-weight: 600;
-}
-
-.notice[hidden] {
-	display: none;
 }
 
 table {
